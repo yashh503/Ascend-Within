@@ -1,0 +1,220 @@
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  SafeAreaView,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Switch,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import Card from '../components/Card';
+import Button from '../components/Button';
+import { useAuth } from '../context/AuthContext';
+import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
+
+const SettingsScreen = ({ navigation }) => {
+  const { user, logout } = useAuth();
+  const [blockingEnabled, setBlockingEnabled] = useState(true);
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign Out', style: 'destructive', onPress: logout },
+      ]
+    );
+  };
+
+  const handleTestBlock = () => {
+    navigation.navigate('Blocked');
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <Card style={styles.profileCard}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>
+              {user?.name?.charAt(0)?.toUpperCase() || '?'}
+            </Text>
+          </View>
+          <Text style={styles.profileName}>{user?.name}</Text>
+          <Text style={styles.profileEmail}>{user?.email}</Text>
+        </Card>
+
+        <Text style={styles.sectionTitle}>Discipline</Text>
+        <Card style={styles.settingsCard}>
+          <SettingRow
+            icon="book-outline"
+            label="Daily Target"
+            value={`${user?.dailyTarget || 1} verse${user?.dailyTarget !== 1 ? 's' : ''}`}
+          />
+          <SettingRow
+            icon="compass-outline"
+            label="Wisdom Path"
+            value={user?.wisdomPath === 'hinduism' ? 'Hinduism' : 'Not set'}
+          />
+          <SettingRow
+            icon="shield-outline"
+            label="Discipline Level"
+            value={`Level ${user?.disciplineLevel || 1}`}
+          />
+          <SettingRow
+            icon="apps-outline"
+            label="Restricted Apps"
+            value={`${user?.restrictedApps?.length || 0} apps`}
+            last
+          />
+        </Card>
+
+        <Text style={styles.sectionTitle}>App Blocking</Text>
+        <Card style={styles.settingsCard}>
+          <View style={styles.settingRow}>
+            <View style={styles.settingLeft}>
+              <Ionicons name="lock-closed-outline" size={20} color={COLORS.primary} />
+              <Text style={styles.settingLabel}>Blocking Enabled</Text>
+            </View>
+            <Switch
+              value={blockingEnabled}
+              onValueChange={setBlockingEnabled}
+              trackColor={{ false: COLORS.border, true: COLORS.primaryLight }}
+              thumbColor={blockingEnabled ? COLORS.primary : COLORS.textLight}
+            />
+          </View>
+          <TouchableOpacity style={[styles.settingRow, styles.lastRow]} onPress={handleTestBlock}>
+            <View style={styles.settingLeft}>
+              <Ionicons name="eye-outline" size={20} color={COLORS.primary} />
+              <Text style={styles.settingLabel}>Test Block Screen</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textLight} />
+          </TouchableOpacity>
+        </Card>
+
+        <Card style={styles.infoCard}>
+          <Text style={styles.infoText}>
+            App blocking is simulated in this version. On a real Android device with proper permissions,
+            the app would detect and block restricted apps system-wide.
+          </Text>
+        </Card>
+
+        <Button
+          title="Sign Out"
+          variant="outline"
+          onPress={handleLogout}
+          style={styles.logoutButton}
+        />
+
+        <Text style={styles.version}>Ascend Within v1.0.0</Text>
+      </ScrollView>
+    </SafeAreaView>
+  );
+};
+
+const SettingRow = ({ icon, label, value, last }) => (
+  <View style={[styles.settingRow, last && styles.lastRow]}>
+    <View style={styles.settingLeft}>
+      <Ionicons name={icon} size={20} color={COLORS.primary} />
+      <Text style={styles.settingLabel}>{label}</Text>
+    </View>
+    <Text style={styles.settingValue}>{value}</Text>
+  </View>
+);
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  scrollContent: {
+    padding: SPACING.lg,
+  },
+  profileCard: {
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  avatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: COLORS.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  avatarText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  profileName: {
+    ...FONTS.title,
+    marginBottom: 2,
+  },
+  profileEmail: {
+    ...FONTS.small,
+  },
+  sectionTitle: {
+    ...FONTS.caption,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.sm,
+    marginLeft: SPACING.xs,
+  },
+  settingsCard: {
+    padding: 0,
+    marginBottom: SPACING.lg,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  lastRow: {
+    borderBottomWidth: 0,
+  },
+  settingLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  settingLabel: {
+    ...FONTS.body,
+    fontSize: 15,
+    marginLeft: SPACING.md,
+  },
+  settingValue: {
+    ...FONTS.small,
+    fontWeight: '500',
+    color: COLORS.primary,
+  },
+  infoCard: {
+    backgroundColor: COLORS.surfaceAlt,
+    marginBottom: SPACING.lg,
+  },
+  infoText: {
+    ...FONTS.small,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  logoutButton: {
+    marginBottom: SPACING.md,
+  },
+  version: {
+    ...FONTS.tiny,
+    textAlign: 'center',
+    marginBottom: SPACING.xl,
+  },
+});
+
+export default SettingsScreen;
