@@ -12,17 +12,19 @@ const UNLOCK_EXPIRY_KEY = 'unlock_expiry';
  * App Blocking Service
  *
  * ANDROID (dev build):
- *   Uses native AppBlockerModule with UsageStatsManager to detect
- *   when a restricted app is opened. Polls every 1.5s, and when
- *   a restricted app is in foreground → brings our app to front
- *   and emits "onAppBlocked" event → we navigate to BlockedScreen.
+ *   Uses a native Foreground Service (AppBlockerService) that runs
+ *   persistently in the background. It polls UsageStatsManager every 1s,
+ *   and when a restricted app is in the foreground it brings our app
+ *   to front with a "blocked" intent extra. The AppBlockerModule detects
+ *   this on resume and emits "onAppBlocked" to JS, which navigates
+ *   to BlockedScreen.
  *
  * iOS:
  *   Uses Screen Time (configured during onboarding).
  *   We only provide notification reminders.
  *
  * FALLBACK (Expo Go / no native module):
- *   AppState-based detection with cooldown (previous behavior).
+ *   No blocking — native module not available.
  */
 
 const hasNativeModule = Platform.OS === 'android' && AppBlockerModule != null;
@@ -37,11 +39,9 @@ Notifications.setNotificationHandler({
 });
 
 const BlockingService = {
-  _listener: null,
   _eventEmitter: null,
   _eventSubscription: null,
   _onBlockedCallback: null,
-  _appStateListener: null,
 
   // ─── Start Monitoring ──────────────────────────────
 
@@ -50,16 +50,13 @@ const BlockingService = {
 
     if (hasNativeModule) {
       await this._startNativeMonitoring();
-    } else if (Platform.OS === 'ios') {
-      // iOS: no background monitoring needed, Screen Time handles it
-      // Just set up notification reminders
     }
-    // No fallback AppState blocking — it doesn't work properly in Expo Go
+    // iOS: no background monitoring needed, Screen Time handles it
   },
 
   async _startNativeMonitoring() {
     try {
-      // Load restricted apps into native module
+      // Load restricted apps into native shared prefs
       const apps = await this.getRestrictedApps();
       if (apps.length > 0) {
         await AppBlockerModule.setRestrictedApps(apps);
@@ -75,7 +72,8 @@ const BlockingService = {
         await AppBlockerModule.setUnlockExpiry(new Date(expiry).getTime());
       }
 
-      // Listen for "onAppBlocked" events from native
+      // Listen for "onAppBlocked" events from the native module
+      // (emitted when the service brings the app to front)
       this._eventEmitter = new NativeEventEmitter(AppBlockerModule);
       this._eventSubscription = this._eventEmitter.addListener(
         'onAppBlocked',
@@ -86,8 +84,10 @@ const BlockingService = {
         }
       );
 
-      // Start native polling
-      await AppBlockerModule.startMonitoring();
+      // Start the foreground service
+      if (enabled && apps.length > 0) {
+        await AppBlockerModule.startMonitoring();
+      }
     } catch (error) {
       console.warn('BlockingService: Failed to start native monitoring:', error.message);
     }
@@ -105,11 +105,6 @@ const BlockingService = {
 
     if (hasNativeModule) {
       try { await AppBlockerModule.stopMonitoring(); } catch (_) {}
-    }
-
-    if (this._appStateListener) {
-      this._appStateListener.remove();
-      this._appStateListener = null;
     }
   },
 

@@ -71,7 +71,7 @@ const SettingsScreen = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Card style={styles.profileCard}>
           <View style={styles.avatar}>
@@ -203,7 +203,7 @@ const SettingsScreen = ({ navigation }) => {
 
         <Text style={styles.version}>Ascend Within v1.0.0</Text>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 

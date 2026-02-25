@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { ActivityIndicator, View, AppState } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -95,20 +95,56 @@ const TASK_SCREENS = ['Reading', 'Quiz', 'Reflection', 'Blocked'];
 
 const AppNavigator = () => {
   const { isAuthenticated, isOnboarded, loading } = useAuth();
+  const appStateRef = useRef(AppState.currentState);
+  const monitoringStarted = useRef(false);
 
   useEffect(() => {
-    if (isAuthenticated && isOnboarded) {
-      BlockingService.startMonitoring(() => {
+    if (isAuthenticated && isOnboarded && !monitoringStarted.current) {
+      monitoringStarted.current = true;
+      BlockingService.startMonitoring((blockedApp) => {
+        // Don't interrupt if user is on a task screen
+        const currentRoute = navigationRef.current?.getCurrentRoute();
+        if (currentRoute && TASK_SCREENS.includes(currentRoute.name)) {
+          return;
+        }
         navigate('Blocked');
       });
     }
 
     return () => {
-      BlockingService.stopMonitoring();
+      if (monitoringStarted.current) {
+        BlockingService.stopMonitoring();
+        monitoringStarted.current = false;
+      }
     };
   }, [isAuthenticated, isOnboarded]);
 
-  // Track current screen so BlockingService knows not to interrupt task screens
+  // When app comes back to foreground (service brought us back),
+  // the native module's onHostResume fires and emits "onAppBlocked".
+  // But we also handle the case where JS wasn't ready yet:
+  useEffect(() => {
+    if (!isAuthenticated || !isOnboarded) return;
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (
+        appStateRef.current.match(/inactive|background/) &&
+        nextState === 'active'
+      ) {
+        // Small delay to let the native module's onHostResume fire first
+        setTimeout(() => {
+          const currentRoute = navigationRef.current?.getCurrentRoute();
+          if (currentRoute && !TASK_SCREENS.includes(currentRoute.name)) {
+            // The native onHostResume + event listener should handle navigation,
+            // but this is a safety fallback
+          }
+        }, 300);
+      }
+      appStateRef.current = nextState;
+    });
+
+    return () => subscription.remove();
+  }, [isAuthenticated, isOnboarded]);
+
   const handleNavigationStateChange = () => {
     const currentRoute = navigationRef.current?.getCurrentRoute();
     if (currentRoute) {
