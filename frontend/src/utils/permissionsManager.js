@@ -1,33 +1,25 @@
 import { Platform, Linking, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
+import BlockingService from './blockingSimulator';
 
 const PERMISSIONS_KEY = 'app_permissions_status';
 
 /**
  * Permissions Manager
  *
- * Handles platform-specific permission flows:
+ * ANDROID (dev build with native module):
+ *   1. Notifications — real system dialog via expo-notifications
+ *   2. Usage Stats — opens system settings, verified via native module
+ *   3. Overlay — opens system settings, verified via native module
  *
- * ANDROID:
- *   Real system permissions opened via Linking.sendIntent:
- *   1. Usage Stats Access — detect foreground app
- *   2. Accessibility Service — real-time app monitoring
- *   3. Display Over Apps (Overlay) — show blocking screen
+ * ANDROID (Expo Go fallback — no native module):
+ *   1. Notifications only
  *
  * iOS:
- *   Apple does not allow third-party app blocking, so we:
- *   1. Request real Notification permission via expo-notifications
- *      (daily reminders to complete wisdom tasks)
- *   2. Guide user step-by-step through iOS Screen Time setup
- *      so they can set native app limits themselves
+ *   1. Notifications — real system dialog via expo-notifications
+ *   2. Screen Time guide — walk user through iOS native app limits
  */
-
-const ANDROID_INTENTS = {
-  usage: 'android.settings.USAGE_ACCESS_SETTINGS',
-  accessibility: 'android.settings.ACCESSIBILITY_SETTINGS',
-  overlay: 'android.settings.action.MANAGE_OVERLAY_PERMISSION',
-};
 
 const PermissionsManager = {
 
@@ -36,15 +28,30 @@ const PermissionsManager = {
   async getPermissionStatus() {
     try {
       const stored = await AsyncStorage.getItem(PERMISSIONS_KEY);
-      if (stored) return JSON.parse(stored);
-    } catch (_) { /* ignore */ }
+      const parsed = stored ? JSON.parse(stored) : {};
 
+      // Always verify real permissions from OS
+      const notifGranted = await this._checkNotificationsReal();
+      parsed.notifications = notifGranted;
+
+      if (Platform.OS === 'android' && BlockingService.isNativeBlockingAvailable()) {
+        parsed.usageStats = await BlockingService.hasUsageStatsPermission();
+        parsed.overlay = await BlockingService.hasOverlayPermission();
+      }
+
+      if (!parsed.platform) parsed.platform = Platform.OS;
+      return parsed;
+    } catch (_) {
+      return this._defaultStatus();
+    }
+  },
+
+  _defaultStatus() {
     return {
       notifications: false,
-      screenTime: false,
-      usage: false,
-      accessibility: false,
+      usageStats: false,
       overlay: false,
+      screenTime: false,
       platform: Platform.OS,
     };
   },
@@ -54,11 +61,25 @@ const PermissionsManager = {
     await AsyncStorage.setItem(PERMISSIONS_KEY, JSON.stringify(status));
   },
 
+  // ─── Real checks ──────────────────────────────────────
+
+  async _checkNotificationsReal() {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      return status === 'granted';
+    } catch {
+      return false;
+    }
+  },
+
   // ─── Notification permission (both platforms) ──────────
 
   async requestNotifications() {
     const { status: existing } = await Notifications.getPermissionsAsync();
-    if (existing === 'granted') return true;
+    if (existing === 'granted') {
+      await this._scheduleDailyReminder();
+      return true;
+    }
 
     const { status } = await Notifications.requestPermissionsAsync();
     if (status === 'granted') {
@@ -68,7 +89,7 @@ const PermissionsManager = {
 
     Alert.alert(
       'Notifications Disabled',
-      'Without notifications you won\'t get daily reminders. You can enable them later in Settings.',
+      'Without notifications you won\'t get daily reminders. You can enable them in your device settings.',
       [
         { text: 'Open Settings', onPress: () => Linking.openSettings() },
         { text: 'Skip', style: 'cancel' },
@@ -92,7 +113,7 @@ const PermissionsManager = {
           minute: 0,
         },
       });
-    } catch (_) { /* silent */ }
+    } catch (_) {}
   },
 
   // ─── iOS Screen Time guide ────────────────────────────
@@ -110,50 +131,36 @@ const PermissionsManager = {
     }
   },
 
-  // ─── Android permission openers ───────────────────────
-
-  async _openAndroidSetting(intentKey, fallbackMessage) {
-    try {
-      await Linking.sendIntent(ANDROID_INTENTS[intentKey]);
-      return true;
-    } catch {
-      try {
-        await Linking.openSettings();
-        return true;
-      } catch {
-        Alert.alert('Manual Setup Required', fallbackMessage);
-        return false;
-      }
-    }
-  },
-
   // ─── Unified request ──────────────────────────────────
 
   async requestPermission(key) {
-    const status = await this.getPermissionStatus();
-    let granted = false;
-
     if (key === 'notifications') {
-      granted = await this.requestNotifications();
-    } else if (key === 'screenTime') {
-      granted = await this.openScreenTimeSettings();
-    } else if (Platform.OS === 'android') {
-      const messages = {
-        usage:
-          'Go to Settings > Apps > Special access > Usage access and enable Ascend Within.',
-        accessibility:
-          'Go to Settings > Accessibility and enable the Ascend Within service.',
-        overlay:
-          'Go to Settings > Apps > Special access > Display over other apps and enable Ascend Within.',
-      };
-      granted = await this._openAndroidSetting(key, messages[key]);
+      await this.requestNotifications();
+      // Always re-verify from OS
+      const granted = await this._checkNotificationsReal();
+      const status = await this.getPermissionStatus();
+      status.notifications = granted;
+      await this._save(status);
+      return granted;
     }
 
-    if (granted) {
-      status[key] = true;
-      await this._save(status);
+    if (key === 'usageStats') {
+      // Opens system settings — user must enable manually
+      await BlockingService.openUsageStatsSettings();
+      // We return false here; the status will be re-checked when user returns
+      return false;
     }
-    return granted;
+
+    if (key === 'overlay') {
+      await BlockingService.openOverlaySettings();
+      return false;
+    }
+
+    if (key === 'screenTime') {
+      return await this.openScreenTimeSettings();
+    }
+
+    return false;
   },
 
   async markGranted(key) {
@@ -169,12 +176,21 @@ const PermissionsManager = {
     if (Platform.OS === 'ios') {
       return s.notifications && s.screenTime;
     }
-    return s.usage && s.accessibility && s.overlay;
+    if (BlockingService.isNativeBlockingAvailable()) {
+      return s.notifications && s.usageStats && s.overlay;
+    }
+    // Expo Go fallback — just notifications
+    return s.notifications;
   },
 
   async checkNotificationStatus() {
-    const { status } = await Notifications.getPermissionsAsync();
-    return status === 'granted';
+    return this._checkNotificationsReal();
+  },
+
+  async refreshStatus() {
+    const status = await this.getPermissionStatus();
+    await this._save(status);
+    return status;
   },
 
   async reset() {
@@ -206,29 +222,46 @@ const PermissionsManager = {
       ];
     }
 
+    // Android with native module
+    if (BlockingService.isNativeBlockingAvailable()) {
+      return [
+        {
+          key: 'notifications',
+          icon: 'notifications-outline',
+          title: 'Daily Reminders',
+          description: 'Get notified every morning to complete your wisdom task',
+          actionLabel: 'Allow',
+          required: true,
+        },
+        {
+          key: 'usageStats',
+          icon: 'time-outline',
+          title: 'Usage Access',
+          description: 'Detect which app you open so we can enforce blocking',
+          actionLabel: 'Grant',
+          required: true,
+          opensSettings: true,
+        },
+        {
+          key: 'overlay',
+          icon: 'layers-outline',
+          title: 'Display Over Apps',
+          description: 'Bring Ascend Within to front when a restricted app is opened',
+          actionLabel: 'Grant',
+          required: true,
+          opensSettings: true,
+        },
+      ];
+    }
+
+    // Android without native module (Expo Go) — notifications only
     return [
       {
-        key: 'usage',
-        icon: 'time-outline',
-        title: 'Usage Access',
-        description: 'Track which apps you open to enforce blocking',
-        actionLabel: 'Grant',
-        required: true,
-      },
-      {
-        key: 'accessibility',
-        icon: 'accessibility-outline',
-        title: 'Accessibility Service',
-        description: 'Detect when restricted apps are opened in real-time',
-        actionLabel: 'Grant',
-        required: true,
-      },
-      {
-        key: 'overlay',
-        icon: 'layers-outline',
-        title: 'Display Over Apps',
-        description: 'Show blocking screen when restricted apps are opened',
-        actionLabel: 'Grant',
+        key: 'notifications',
+        icon: 'notifications-outline',
+        title: 'Daily Reminders',
+        description: 'Get notified every morning to complete your wisdom task',
+        actionLabel: 'Allow',
         required: true,
       },
     ];

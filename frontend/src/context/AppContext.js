@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useCallback } from 'react';
 import { progressAPI, disciplineAPI } from '../services/api';
+import BlockingService from '../utils/blockingSimulator';
 
 const AppContext = createContext();
 
@@ -13,6 +14,13 @@ export const AppProvider = ({ children }) => {
       setLoading(true);
       const response = await progressAPI.getStatus();
       setDailyStatus(response.data);
+
+      // Sync unlock expiry with BlockingService so AppState checks work
+      const today = response.data?.today;
+      if (today?.unlockExpiresAt && today?.isUnlocked) {
+        await BlockingService.setUnlockExpiry(today.unlockExpiresAt);
+      }
+
       return response.data;
     } catch (error) {
       console.error('Failed to fetch daily status:', error.message);

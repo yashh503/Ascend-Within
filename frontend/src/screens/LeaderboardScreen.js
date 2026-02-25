@@ -3,12 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   RefreshControl,
   TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context'; 
 import { useFocusEffect } from '@react-navigation/native';
 import Card from '../components/Card';
 import { leaderboardAPI } from '../services/api';

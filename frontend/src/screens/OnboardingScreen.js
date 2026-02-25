@@ -1,21 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   TouchableOpacity,
   ScrollView,
   Alert,
   Platform,
   Modal,
+  AppState,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Button from '../components/Button';
 import Card from '../components/Card';
 import ProgressBar from '../components/ProgressBar';
 import { useAuth } from '../context/AuthContext';
 import PermissionsManager from '../utils/permissionsManager';
+import BlockingService from '../utils/blockingSimulator';
 import { COLORS, SPACING, FONTS, RADIUS, SHADOWS } from '../constants/theme';
 
 const STEPS = ['Wisdom Path', 'Daily Target', 'Restrict Apps', 'Permissions'];
@@ -45,6 +47,8 @@ const OnboardingScreen = () => {
   const [showGuide, setShowGuide] = useState(false);
   const [guideStep, setGuideStep] = useState(0);
 
+  const appStateRef = useRef(AppState.currentState);
+
   useEffect(() => {
     const init = async () => {
       const info = PermissionsManager.getPermissionInfo();
@@ -54,6 +58,21 @@ const OnboardingScreen = () => {
     };
     init();
   }, []);
+
+  // Re-check permissions when user returns from system settings
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextState) => {
+      if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
+        // User returned from settings — re-verify all permissions from OS
+        if (step === 3) {
+          const freshStatus = await PermissionsManager.getPermissionStatus();
+          setPermissionsGranted(freshStatus);
+        }
+      }
+      appStateRef.current = nextState;
+    });
+    return () => subscription.remove();
+  }, [step]);
 
   const toggleApp = (packageName) => {
     setSelectedApps((prev) =>
@@ -69,10 +88,18 @@ const OnboardingScreen = () => {
       setShowGuide(true);
       return;
     }
-    const granted = await PermissionsManager.requestPermission(perm.key);
-    if (granted) {
-      setPermissionsGranted((prev) => ({ ...prev, [perm.key]: true }));
+
+    if (perm.opensSettings) {
+      // Opens system settings (Usage Stats / Overlay) — permission is
+      // re-verified automatically when user returns via AppState listener
+      await PermissionsManager.requestPermission(perm.key);
+      return;
     }
+
+    // Notifications — shows real system dialog
+    await PermissionsManager.requestPermission(perm.key);
+    const freshStatus = await PermissionsManager.getPermissionStatus();
+    setPermissionsGranted(freshStatus);
   };
 
   const handleGuideComplete = async () => {
@@ -94,7 +121,12 @@ const OnboardingScreen = () => {
         if (Platform.OS === 'ios') {
           return permissionsGranted.notifications && permissionsGranted.screenTime;
         }
-        return permissionsGranted.usage && permissionsGranted.accessibility && permissionsGranted.overlay;
+        // Android with native module: need all 3 real permissions
+        if (BlockingService.isNativeBlockingAvailable()) {
+          return permissionsGranted.notifications && permissionsGranted.usageStats && permissionsGranted.overlay;
+        }
+        // Expo Go fallback: just notifications
+        return !!permissionsGranted.notifications;
       }
       default: return false;
     }
@@ -221,9 +253,12 @@ const OnboardingScreen = () => {
             <Text style={styles.stepDescription}>
               {Platform.OS === 'ios'
                 ? 'We need notification access for daily reminders, and we\'ll guide you through setting up Screen Time to block apps natively.'
-                : 'These permissions are required to monitor and block restricted apps on your device.'}
+                : BlockingService.isNativeBlockingAvailable()
+                  ? 'These permissions let Ascend Within detect when you open a restricted app and bring you back to complete your daily task.'
+                  : 'Allow notifications for daily reminders to complete your wisdom task.'}
             </Text>
 
+            {/* All permission items — dynamically from PermissionsManager */}
             {permissionsList.map((perm) => {
               const isGranted = permissionsGranted[perm.key];
               return (
@@ -245,21 +280,26 @@ const OnboardingScreen = () => {
                     <Text style={styles.permTitle}>{perm.title}</Text>
                     <Text style={styles.permDesc}>{perm.description}</Text>
                   </View>
-                  {!isGranted && (
+                  {isGranted ? (
+                    <Text style={styles.permGrantedLabel}>Granted</Text>
+                  ) : (
                     <View style={styles.permAction}>
                       <Text style={styles.permActionText}>{perm.actionLabel}</Text>
-                      <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+                      {perm.opensSettings && (
+                        <Ionicons name="open-outline" size={14} color={COLORS.primary} />
+                      )}
                     </View>
                   )}
                 </TouchableOpacity>
               );
             })}
 
-            {Platform.OS === 'android' && (
+            {/* Android note: settings-based permissions re-check automatically */}
+            {Platform.OS === 'android' && BlockingService.isNativeBlockingAvailable() && (
               <Card style={styles.note}>
                 <Ionicons name="information-circle-outline" size={18} color={COLORS.textSecondary} />
                 <Text style={styles.noteText}>
-                  Each permission opens the relevant system settings. Enable it for Ascend Within, then return here.
+                  Usage Access and Display Over Apps open your device settings. Enable them for Ascend Within, then come back — we'll detect it automatically.
                 </Text>
               </Card>
             )}
@@ -569,6 +609,11 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontWeight: '600',
     fontSize: 14,
+  },
+  permGrantedLabel: {
+    ...FONTS.small,
+    color: COLORS.success,
+    fontWeight: '600',
   },
   note: {
     marginTop: SPACING.sm,

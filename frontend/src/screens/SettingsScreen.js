@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   Alert,
@@ -11,11 +10,13 @@ import {
   Platform,
   Linking,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context'; 
 import { Ionicons } from '@expo/vector-icons';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import { useAuth } from '../context/AuthContext';
 import PermissionsManager from '../utils/permissionsManager';
+import BlockingService from '../utils/blockingSimulator';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 
 const SettingsScreen = ({ navigation }) => {
@@ -25,15 +26,32 @@ const SettingsScreen = ({ navigation }) => {
 
   useEffect(() => {
     loadPermissionStatus();
+    loadBlockingState();
   }, []);
 
   const loadPermissionStatus = async () => {
-    const status = await PermissionsManager.getPermissionStatus();
+    // refreshStatus re-checks real OS notification permission
+    const status = await PermissionsManager.refreshStatus();
     setPermissionStatus(status);
+  };
+
+  const loadBlockingState = async () => {
+    const enabled = await BlockingService.isBlockingEnabled();
+    setBlockingEnabled(enabled);
+  };
+
+  const handleBlockingToggle = async (value) => {
+    setBlockingEnabled(value);
+    await BlockingService.setBlockingEnabled(value);
   };
 
   const handleFixPermission = async (key) => {
     await PermissionsManager.requestPermission(key);
+    // For settings-based permissions, re-check after a short delay
+    // (user needs to come back from settings)
+    setTimeout(async () => {
+      await loadPermissionStatus();
+    }, 1000);
     await loadPermissionStatus();
   };
 
@@ -99,7 +117,7 @@ const SettingsScreen = ({ navigation }) => {
             </View>
             <Switch
               value={blockingEnabled}
-              onValueChange={setBlockingEnabled}
+              onValueChange={handleBlockingToggle}
               trackColor={{ false: COLORS.border, true: COLORS.primaryLight }}
               thumbColor={blockingEnabled ? COLORS.primary : COLORS.textLight}
             />

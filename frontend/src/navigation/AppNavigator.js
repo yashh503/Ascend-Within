@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
+import { navigationRef, navigate } from './navigationRef';
+import BlockingService from '../utils/blockingSimulator';
 import { COLORS } from '../constants/theme';
 
 import WelcomeScreen from '../screens/WelcomeScreen';
@@ -83,13 +85,37 @@ const MainStack = () => (
     <Stack.Screen
       name="Blocked"
       component={BlockedScreen}
-      options={{ headerShown: false, presentation: 'fullScreenModal' }}
+      options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }}
     />
   </Stack.Navigator>
 );
 
+// Screens where blocking should NOT interrupt the user
+const TASK_SCREENS = ['Reading', 'Quiz', 'Reflection', 'Blocked'];
+
 const AppNavigator = () => {
   const { isAuthenticated, isOnboarded, loading } = useAuth();
+
+  useEffect(() => {
+    if (isAuthenticated && isOnboarded) {
+      BlockingService.startMonitoring(() => {
+        navigate('Blocked');
+      });
+    }
+
+    return () => {
+      BlockingService.stopMonitoring();
+    };
+  }, [isAuthenticated, isOnboarded]);
+
+  // Track current screen so BlockingService knows not to interrupt task screens
+  const handleNavigationStateChange = () => {
+    const currentRoute = navigationRef.current?.getCurrentRoute();
+    if (currentRoute) {
+      const isTaskScreen = TASK_SCREENS.includes(currentRoute.name);
+      BlockingService.setOnTaskScreen(isTaskScreen);
+    }
+  };
 
   if (loading) {
     return (
@@ -100,7 +126,10 @@ const AppNavigator = () => {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      ref={navigationRef}
+      onStateChange={handleNavigationStateChange}
+    >
       {!isAuthenticated ? (
         <AuthStack />
       ) : !isOnboarded ? (

@@ -19,7 +19,18 @@
       "adaptiveIcon": {
         "backgroundColor": "#FAFAF8"
       },
-      "package": "com.monkmode.app"
-    }
+      "package": "com.monkmode.app",
+      "permissions": [
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.POST_NOTIFICATIONS"
+      ]
+    },
+    "plugins": [
+      "expo-notifications",
+      "./plugins/withAppBlocker"
+    ]
   }
 }
