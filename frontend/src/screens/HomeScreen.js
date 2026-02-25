@@ -145,12 +145,20 @@ const HomeScreen = ({ navigation }) => {
           />
         )}
 
-        {status?.quizPassed && status?.reflectionDone && !isUnlocked() && (
+        {status?.quizPassed && status?.reflectionDone && (
           <Card style={styles.completedCard}>
             <Ionicons name="checkmark-circle" size={32} color={COLORS.success} />
             <Text style={styles.completedText}>
               Today's journey is complete. Rest well.
             </Text>
+            <TouchableOpacity
+              style={styles.rereadButton}
+              onPress={() => navigation.navigate('Reading')}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="book-outline" size={18} color={COLORS.primary} />
+              <Text style={styles.rereadText}>Re-read Today's Verses</Text>
+            </TouchableOpacity>
           </Card>
         )}
 
@@ -322,6 +330,22 @@ const styles = StyleSheet.create({
     color: COLORS.success,
     marginTop: SPACING.sm,
     textAlign: 'center',
+  },
+  rereadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    gap: SPACING.sm,
+  },
+  rereadText: {
+    ...FONTS.small,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
   statsRow: {
     flexDirection: 'row',

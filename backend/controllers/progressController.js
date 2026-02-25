@@ -200,4 +200,27 @@ const getAnalytics = async (req, res) => {
   }
 };
 
-module.exports = { submitQuiz, submitReflection, getStatus, recordBlockedAttempt, getAnalytics };
+const resetQuiz = async (req, res) => {
+  try {
+    const today = getTodayString();
+    const progress = await DailyProgress.findOne({ userId: req.user._id, date: today });
+
+    if (!progress) {
+      return res.status(404).json({ message: 'No daily progress found for today' });
+    }
+
+    if (progress.passed) {
+      return res.status(400).json({ message: 'Cannot reset a passed quiz' });
+    }
+
+    progress.quizScore = null;
+    progress.quizTotal = null;
+    await progress.save();
+
+    res.json({ message: 'Quiz reset. Please re-read the verses and try again.' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+module.exports = { submitQuiz, submitReflection, getStatus, recordBlockedAttempt, getAnalytics, resetQuiz };

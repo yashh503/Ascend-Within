@@ -7,6 +7,7 @@ const authRoutes = require('./routes/authRoutes');
 const verseRoutes = require('./routes/verseRoutes');
 const progressRoutes = require('./routes/progressRoutes');
 const disciplineRoutes = require('./routes/disciplineRoutes');
+const leaderboardRoutes = require('./routes/leaderboardRoutes');
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use('/auth', authRoutes);
 app.use('/verses', verseRoutes);
 app.use('/progress', progressRoutes);
 app.use('/discipline', disciplineRoutes);
+app.use('/leaderboard', leaderboardRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Ascend Within API is running' });

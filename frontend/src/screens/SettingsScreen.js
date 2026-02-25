@@ -8,16 +8,34 @@ import {
   TouchableOpacity,
   Alert,
   Switch,
+  Platform,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import { useAuth } from '../context/AuthContext';
+import PermissionsManager from '../utils/permissionsManager';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 
 const SettingsScreen = ({ navigation }) => {
   const { user, logout } = useAuth();
   const [blockingEnabled, setBlockingEnabled] = useState(true);
+  const [permissionStatus, setPermissionStatus] = useState({});
+
+  useEffect(() => {
+    loadPermissionStatus();
+  }, []);
+
+  const loadPermissionStatus = async () => {
+    const status = await PermissionsManager.getPermissionStatus();
+    setPermissionStatus(status);
+  };
+
+  const handleFixPermission = async (key) => {
+    await PermissionsManager.requestPermission(key);
+    await loadPermissionStatus();
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -95,12 +113,68 @@ const SettingsScreen = ({ navigation }) => {
           </TouchableOpacity>
         </Card>
 
-        <Card style={styles.infoCard}>
-          <Text style={styles.infoText}>
-            App blocking is simulated in this version. On a real Android device with proper permissions,
-            the app would detect and block restricted apps system-wide.
-          </Text>
+        <Text style={styles.sectionTitle}>Permissions</Text>
+        <Card style={styles.settingsCard}>
+          {PermissionsManager.getPermissionInfo().map((perm, index, arr) => {
+            const isGranted = permissionStatus[perm.key];
+            return (
+              <TouchableOpacity
+                key={perm.key}
+                style={[styles.settingRow, index === arr.length - 1 && styles.lastRow]}
+                onPress={() => !isGranted && handleFixPermission(perm.key)}
+                disabled={isGranted}
+                activeOpacity={isGranted ? 1 : 0.7}
+              >
+                <View style={styles.settingLeft}>
+                  <Ionicons
+                    name={perm.icon}
+                    size={20}
+                    color={isGranted ? COLORS.success : COLORS.error}
+                  />
+                  <Text style={styles.settingLabel}>{perm.title}</Text>
+                </View>
+                {isGranted ? (
+                  <View style={styles.permStatusRow}>
+                    <Text style={styles.permGrantedText}>Enabled</Text>
+                    <Ionicons name="checkmark-circle" size={18} color={COLORS.success} />
+                  </View>
+                ) : (
+                  <View style={styles.permStatusRow}>
+                    <Text style={styles.permFixText}>{perm.actionLabel || 'Fix'}</Text>
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.error} />
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
         </Card>
+
+        {Platform.OS === 'ios' && (
+          <>
+            <Text style={styles.sectionTitle}>Screen Time</Text>
+            <Card style={styles.settingsCard}>
+              <TouchableOpacity
+                style={[styles.settingRow]}
+                onPress={() => Linking.openURL('app-settings:')}
+                activeOpacity={0.7}
+              >
+                <View style={styles.settingLeft}>
+                  <Ionicons name="hourglass-outline" size={20} color={COLORS.primary} />
+                  <Text style={styles.settingLabel}>Open Screen Time Settings</Text>
+                </View>
+                <Ionicons name="open-outline" size={18} color={COLORS.textLight} />
+              </TouchableOpacity>
+              <View style={[styles.settingRow, styles.lastRow]}>
+                <View style={styles.settingLeft}>
+                  <Ionicons name="information-circle-outline" size={20} color={COLORS.textLight} />
+                  <Text style={[styles.settingLabel, { color: COLORS.textSecondary, fontSize: 13 }]}>
+                    Use iOS Screen Time to set app limits natively
+                  </Text>
+                </View>
+              </View>
+            </Card>
+          </>
+        )}
 
         <Button
           title="Sign Out"
@@ -206,6 +280,21 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  permStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  permGrantedText: {
+    ...FONTS.small,
+    color: COLORS.success,
+    fontWeight: '500',
+  },
+  permFixText: {
+    ...FONTS.small,
+    color: COLORS.error,
+    fontWeight: '600',
   },
   logoutButton: {
     marginBottom: SPACING.md,

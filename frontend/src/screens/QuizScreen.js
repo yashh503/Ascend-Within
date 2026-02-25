@@ -94,11 +94,17 @@ const QuizScreen = ({ navigation, route }) => {
     }
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (result?.passed) {
       navigation.navigate('Reflection');
     } else {
-      navigation.goBack();
+      try {
+        await progressAPI.resetQuiz();
+        await fetchDailyStatus();
+        navigation.navigate('Reading');
+      } catch (error) {
+        Alert.alert('Error', error.message);
+      }
     }
   };
 

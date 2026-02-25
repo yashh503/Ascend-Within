@@ -18,6 +18,7 @@ import ReflectionScreen from '../screens/ReflectionScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import BlockedScreen from '../screens/BlockedScreen';
+import LeaderboardScreen from '../screens/LeaderboardScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -51,6 +52,7 @@ const MainTabs = () => (
       tabBarIcon: ({ focused, color, size }) => {
         let iconName;
         if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';
+        else if (route.name === 'Leaderboard') iconName = focused ? 'trophy' : 'trophy-outline';
         else if (route.name === 'Analytics') iconName = focused ? 'bar-chart' : 'bar-chart-outline';
         else if (route.name === 'Settings') iconName = focused ? 'settings' : 'settings-outline';
         return <Ionicons name={iconName} size={size} color={color} />;
@@ -66,6 +68,7 @@ const MainTabs = () => (
     })}
   >
     <Tab.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
+    <Tab.Screen name="Leaderboard" component={LeaderboardScreen} options={{ title: 'Leaderboard' }} />
     <Tab.Screen name="Analytics" component={AnalyticsScreen} options={{ title: 'Analytics' }} />
     <Tab.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
   </Tab.Navigator>

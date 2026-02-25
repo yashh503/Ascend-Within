@@ -5,6 +5,7 @@ const {
   getStatus,
   recordBlockedAttempt,
   getAnalytics,
+  resetQuiz,
 } = require('../controllers/progressController');
 const { protect } = require('../middleware/auth');
 
@@ -15,5 +16,6 @@ router.post('/reflection', protect, submitReflection);
 router.get('/status', protect, getStatus);
 router.post('/blocked', protect, recordBlockedAttempt);
 router.get('/analytics', protect, getAnalytics);
+router.post('/reset-quiz', protect, resetQuiz);
 
 module.exports = router;

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://localhost:5151';
+const API_URL = 'http://192.168.1.17:5151';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -41,6 +41,11 @@ export const progressAPI = {
   getStatus: () => api.get('/progress/status'),
   recordBlocked: () => api.post('/progress/blocked'),
   getAnalytics: () => api.get('/progress/analytics'),
+  resetQuiz: () => api.post('/progress/reset-quiz'),
+};
+
+export const leaderboardAPI = {
+  getLeaderboard: (type = 'streak') => api.get(`/leaderboard?type=${type}`),
 };
 
 export const disciplineAPI = {

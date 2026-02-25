@@ -58,7 +58,6 @@ const ReadingScreen = ({ navigation }) => {
 
   const handleFinishReading = () => {
     if (progress?.passed) {
-      Alert.alert('Already completed', 'You have already passed today\'s quiz.');
       navigation.goBack();
     } else {
       navigation.navigate('Quiz', { verses });
@@ -157,7 +156,7 @@ const ReadingScreen = ({ navigation }) => {
           />
         ) : (
           <Button
-            title="Take Quiz"
+            title={progress?.passed ? 'Done Reading' : 'Take Quiz'}
             onPress={handleFinishReading}
             style={styles.navButton}
           />
