@@ -26,9 +26,21 @@ const BOOKS = {
       18: { name: 'Moksha Sanyasa Yoga', verseCount: 78 },
     },
   },
+
+  'shiv-tandav-stotram': {
+    id: 'shiv-tandav-stotram',
+    name: 'Shiv Tandav Stotram',
+    wisdomPath: 'hinduism',
+    totalChapters: 1,
+    totalVerses: 13,
+    chapters: {
+      1: { name: 'Shiv Tandav Stotram', verseCount: 13 },
+    },
+  },
 };
 
 const VALID_TARGETS = ['half_chapter', 'full_chapter', 'custom_5', 'custom_10', 'custom_15', 'custom_20'];
+const SMALL_BOOK_THRESHOLD = 20; // books with fewer verses skip pace selection
 
 function getBooksForWisdomPath(wisdomPath) {
   return Object.values(BOOKS).filter((b) => b.wisdomPath === wisdomPath);
@@ -64,4 +76,4 @@ function getSessionVerseCount(dailyTarget, chapterVerseCount, currentVerseInChap
   return Math.min(targetCount, remainingInChapter);
 }
 
-module.exports = { BOOKS, VALID_TARGETS, getBooksForWisdomPath, getSessionVerseCount };
+module.exports = { BOOKS, VALID_TARGETS, SMALL_BOOK_THRESHOLD, getBooksForWisdomPath, getSessionVerseCount };

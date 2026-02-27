@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const verseSchema = new mongoose.Schema({
+  bookId: {
+    type: String,
+    required: true,
+    default: 'bhagavad-gita',
+  },
   chapter: {
     type: Number,
     required: true,
@@ -38,6 +43,6 @@ const verseSchema = new mongoose.Schema({
   ],
 });
 
-verseSchema.index({ chapter: 1, verseNumber: 1 }, { unique: true });
+verseSchema.index({ bookId: 1, chapter: 1, verseNumber: 1 }, { unique: true });
 
 module.exports = mongoose.model('Verse', verseSchema);

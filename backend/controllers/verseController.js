@@ -2,7 +2,7 @@ const Verse = require('../models/Verse');
 const DailyProgress = require('../models/DailyProgress');
 const BookProgress = require('../models/BookProgress');
 const User = require('../models/User');
-const { BOOKS, VALID_TARGETS, getBooksForWisdomPath, getSessionVerseCount } = require('../constants/books');
+const { BOOKS, VALID_TARGETS, SMALL_BOOK_THRESHOLD, getBooksForWisdomPath, getSessionVerseCount } = require('../constants/books');
 
 const getTodayString = () => {
   return new Date().toISOString().split('T')[0];
@@ -93,7 +93,26 @@ const getBookChapters = async (req, res) => {
       return res.status(404).json({ message: 'Book not found' });
     }
 
-    const bookProgress = await BookProgress.findOne({ userId: req.user._id, bookId });
+    let bookProgress = await BookProgress.findOne({ userId: req.user._id, bookId });
+
+    // Auto-setup small books with full_chapter pace
+    if ((!bookProgress || !bookProgress.setupComplete) && book.totalVerses < SMALL_BOOK_THRESHOLD) {
+      if (bookProgress) {
+        bookProgress.dailyTarget = 'full_chapter';
+        bookProgress.setupComplete = true;
+        await bookProgress.save();
+      } else {
+        bookProgress = await BookProgress.create({
+          userId: req.user._id,
+          bookId,
+          dailyTarget: 'full_chapter',
+          currentChapter: 1,
+          currentVerseInChapter: 0,
+          setupComplete: true,
+        });
+      }
+    }
+
     const completedChapters = bookProgress?.chaptersCompleted?.map((c) => c.chapter) || [];
     const currentChapter = bookProgress?.currentChapter || 1;
     const currentVerseInChapter = bookProgress?.currentVerseInChapter || 0;
@@ -201,7 +220,25 @@ const getSessionVerses = async (req, res) => {
       return res.status(404).json({ message: 'Book not found' });
     }
 
-    const bookProgress = await BookProgress.findOne({ userId: user._id, bookId });
+    let bookProgress = await BookProgress.findOne({ userId: user._id, bookId });
+
+    // Auto-setup small books with full_chapter pace
+    if ((!bookProgress || !bookProgress.setupComplete) && book.totalVerses < SMALL_BOOK_THRESHOLD) {
+      if (bookProgress) {
+        bookProgress.dailyTarget = 'full_chapter';
+        bookProgress.setupComplete = true;
+        await bookProgress.save();
+      } else {
+        bookProgress = await BookProgress.create({
+          userId: user._id,
+          bookId,
+          dailyTarget: 'full_chapter',
+          currentChapter: 1,
+          currentVerseInChapter: 0,
+          setupComplete: true,
+        });
+      }
+    }
 
     if (!bookProgress || !bookProgress.setupComplete) {
       return res.status(400).json({ message: 'Please set up your reading pace first' });
@@ -250,6 +287,7 @@ const getSessionVerses = async (req, res) => {
 
     // Fetch verses sequentially
     const verses = await Verse.find({
+      bookId,
       chapter: chapter,
       verseNumber: { $gte: startVerse, $lte: endVerse },
     }).sort({ verseNumber: 1 });

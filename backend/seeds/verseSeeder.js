@@ -183,6 +183,7 @@ const seedVerses = async () => {
 
     // Transform each verse to our Mongoose schema
     const documents = allVerses.map((v) => ({
+      bookId: 'bhagavad-gita',
       chapter: v.chapter_number,
       verseNumber: v.verse_number,
       sanskrit: (v.text || '').replace(/\n/g, ' ').trim(),
@@ -197,9 +198,9 @@ const seedVerses = async () => {
       ),
     }));
 
-    // Clear existing data
-    await Verse.deleteMany({});
-    console.log('Cleared existing verses');
+    // Clear existing Gita verses (not other books)
+    await Verse.deleteMany({ bookId: 'bhagavad-gita' });
+    console.log('Cleared existing Bhagavad Gita verses');
 
     // Insert in batches of 100
     const BATCH = 100;
