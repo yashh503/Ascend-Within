@@ -15,8 +15,11 @@ import { progressAPI, verseAPI } from '../services/api';
 import { useApp } from '../context/AppContext';
 import { COLORS, SPACING, FONTS, RADIUS, SHADOWS } from '../constants/theme';
 
+const MAX_QUIZ_QUESTIONS = 5;
+
 const QuizScreen = ({ navigation, route }) => {
-  const { fetchDailyStatus } = useApp();
+  const { fetchDailyStatus, fetchBookChapters } = useApp();
+  const bookId = route.params?.bookId || 'bhagavad-gita';
   const [questions, setQuestions] = useState([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState({});
@@ -33,7 +36,7 @@ const QuizScreen = ({ navigation, route }) => {
     try {
       let verses = route.params?.verses;
       if (!verses) {
-        const response = await verseAPI.getDailyVerses();
+        const response = await verseAPI.getSessionVerses(bookId);
         verses = response.data.verses;
       }
 
@@ -50,7 +53,7 @@ const QuizScreen = ({ navigation, route }) => {
         }
       });
 
-      setQuestions(allQuestions.slice(0,5));
+      setQuestions(allQuestions.slice(0, MAX_QUIZ_QUESTIONS));
     } catch (error) {
       Alert.alert('Error', error.message);
     } finally {
@@ -81,11 +84,12 @@ const QuizScreen = ({ navigation, route }) => {
       const response = await progressAPI.submitQuiz({
         score: correct,
         total: questions.length,
+        bookId,
       });
 
       setResult(response.data);
       setShowResult(true);
-      await fetchDailyStatus();
+      await Promise.all([fetchDailyStatus(), fetchBookChapters(bookId)]);
     } catch (error) {
       Alert.alert('Error', error.message);
     } finally {
@@ -95,12 +99,12 @@ const QuizScreen = ({ navigation, route }) => {
 
   const handleContinue = async () => {
     if (result?.passed) {
-      navigation.navigate('Reflection');
+      navigation.navigate('Reflection', { bookId });
     } else {
       try {
-        await progressAPI.resetQuiz();
+        await progressAPI.resetQuiz({ bookId });
         await fetchDailyStatus();
-        navigation.navigate('Reading');
+        navigation.navigate('Reading', { bookId });
       } catch (error) {
         Alert.alert('Error', error.message);
       }
@@ -135,7 +139,7 @@ const QuizScreen = ({ navigation, route }) => {
           <Text style={styles.resultMessage}>{result.message}</Text>
 
           <Button
-            title={result.passed ? 'Write Reflection' : 'Review Verses'}
+            title={result.passed ? 'Continue' : 'Review Verses'}
             onPress={handleContinue}
             style={styles.resultButton}
           />

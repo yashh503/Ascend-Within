@@ -1,31 +1,48 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   RefreshControl,
-  Modal,
   TouchableOpacity,
-  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import Card from '../components/Card';
-import Button from '../components/Button';
 import ProgressBar from '../components/ProgressBar';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
-import { disciplineAPI } from '../services/api';
-import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
+import { COLORS, SPACING, FONTS, RADIUS, SHADOWS } from '../constants/theme';
 
 const HomeScreen = ({ navigation }) => {
-  const { user, updateUser } = useAuth();
-  const { dailyStatus, fetchDailyStatus, checkDisciplinePrompt } = useApp();
+  const { user } = useAuth();
+  const { books, fetchBooks, dailyStatus, fetchDailyStatus } = useApp();
   const [refreshing, setRefreshing] = useState(false);
-  const [showDisciplineModal, setShowDisciplineModal] = useState(false);
-  const [disciplineData, setDisciplineData] = useState(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [timeLeft, setTimeLeft] = useState('');
+  const timerRef = useRef(null);
+
+  const getTimeUntilMidnight = () => {
+    const now = new Date();
+    const midnight = new Date(now);
+    midnight.setHours(24, 0, 0, 0);
+    const diff = midnight - now;
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  };
+
+  useEffect(() => {
+    setTimeLeft(getTimeUntilMidnight());
+    timerRef.current = setInterval(() => {
+      setTimeLeft(getTimeUntilMidnight());
+    }, 1000);
+    return () => clearInterval(timerRef.current);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -34,12 +51,8 @@ const HomeScreen = ({ navigation }) => {
   );
 
   const loadData = async () => {
-    await fetchDailyStatus();
-    const promptData = await checkDisciplinePrompt();
-    if (promptData?.shouldPrompt) {
-      setDisciplineData(promptData);
-      setShowDisciplineModal(true);
-    }
+    await Promise.all([fetchBooks(), fetchDailyStatus()]);
+    setInitialLoading(false);
   };
 
   const onRefresh = async () => {
@@ -48,37 +61,26 @@ const HomeScreen = ({ navigation }) => {
     setRefreshing(false);
   };
 
-  const handleDisciplineAction = async (action) => {
-    try {
-      const response = await disciplineAPI.update({ action });
-      updateUser({
-        disciplineLevel: response.data.disciplineLevel,
-        dailyTarget: response.data.dailyTarget,
-      });
-      setShowDisciplineModal(false);
-    } catch (error) {
-      Alert.alert('Error', error.message);
-    }
-  };
-
-  const status = dailyStatus?.today;
-  const streak = dailyStatus?.streak;
-
-  const getProgress = () => {
-    if (!status) return 0;
-    let steps = 0;
-    if (status.readingCompleted) steps++;
-    if (status.quizPassed) steps++;
-    if (status.reflectionDone) steps++;
-    return (steps / 3) * 100;
-  };
-
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good morning';
     if (hour < 17) return 'Good afternoon';
     return 'Good evening';
   };
+
+  const streak = dailyStatus?.streak;
+  const sessions = dailyStatus?.today?.sessions || [];
+  const todayCompleted = sessions.some((s) => s.quizPassed);
+
+  if (initialLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -100,133 +102,84 @@ const HomeScreen = ({ navigation }) => {
           )}
         </View>
 
-        <Card style={styles.progressCard}>
-          <Text style={styles.progressTitle}>Today's Progress</Text>
-          <ProgressBar progress={getProgress()} />
-          <View style={styles.checklistRow}>
-            <CheckItem done={status?.readingCompleted} label="Read verses" />
-            <CheckItem done={status?.quizPassed} label="Pass quiz" />
-            <CheckItem done={status?.reflectionDone} label="Reflect" />
+        <View style={[styles.timerCard, todayCompleted && styles.timerCardCompleted]}>
+          <View style={[styles.timerIconWrap, todayCompleted && styles.timerIconWrapCompleted]}>
+            <Ionicons
+              name={todayCompleted ? 'checkmark-circle' : 'time-outline'}
+              size={22}
+              color={todayCompleted ? COLORS.success : COLORS.warning}
+            />
           </View>
-        </Card>
-
-        {!status?.readingCompleted && (
-          <Button
-            title="Begin Today's Reading"
-            onPress={() => navigation.navigate('Reading')}
-            style={styles.ctaButton}
-          />
-        )}
-
-        {status?.readingCompleted && !status?.quizPassed && (
-          <Button
-            title="Take the Quiz"
-            onPress={() => navigation.navigate('Quiz')}
-            style={styles.ctaButton}
-          />
-        )}
-
-        {status?.quizPassed && !status?.reflectionDone && (
-          <Button
-            title="Write Your Reflection"
-            onPress={() => navigation.navigate('Reflection')}
-            style={styles.ctaButton}
-          />
-        )}
-
-        {status?.quizPassed && status?.reflectionDone && (
-          <Card style={styles.completedCard}>
-            <Ionicons name="checkmark-circle" size={32} color={COLORS.success} />
-            <Text style={styles.completedText}>
-              Amazing work today! You're building wisdom one day at a time.
+          <View style={styles.timerInfo}>
+            <Text style={styles.timerLabel}>
+              {todayCompleted ? 'Next goal unlocks in' : 'Time left today'}
             </Text>
-            <View style={styles.completedActions}>
-              <TouchableOpacity
-                style={styles.rereadButton}
-                onPress={() => navigation.navigate('Reading')}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="book-outline" size={18} color={COLORS.primary} />
-                <Text style={styles.rereadText}>Re-read Today's Verses</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.bonusButton}
-                onPress={() => navigation.navigate('BonusReading')}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="arrow-forward-outline" size={18} color={COLORS.success} />
-                <Text style={styles.bonusText}>Keep Going</Text>
-              </TouchableOpacity>
-            </View>
+            <Text style={[styles.timerValue, todayCompleted && styles.timerValueCompleted]}>
+              {timeLeft}
+            </Text>
+          </View>
+          <View style={styles.timerHintWrap}>
+            <Text style={[styles.timerHint, todayCompleted && styles.timerHintCompleted]}>
+              {todayCompleted ? "Today's wisdom earned!" : 'Complete your reading!'}
+            </Text>
+          </View>
+        </View>
+
+        <Text style={styles.sectionTitle}>Your Books</Text>
+
+        {books?.map((book) => {
+          const progress = book.totalVerses > 0
+            ? (book.totalVersesRead / book.totalVerses) * 100
+            : 0;
+
+          return (
+            <TouchableOpacity
+              key={book.id}
+              style={styles.bookCard}
+              onPress={() => navigation.navigate('BookDetail', { bookId: book.id, bookName: book.name })}
+              activeOpacity={0.7}
+            >
+              <View style={styles.bookIconWrap}>
+                <Ionicons name="book" size={28} color={COLORS.primary} />
+              </View>
+              <View style={styles.bookInfo}>
+                <Text style={styles.bookName}>{book.name}</Text>
+                <Text style={styles.bookMeta}>
+                  {book.totalChapters} chapters · {book.totalVerses} verses
+                </Text>
+                <View style={styles.bookProgressRow}>
+                  <View style={styles.bookProgressBarWrap}>
+                    <ProgressBar progress={progress} />
+                  </View>
+                  <Text style={styles.bookProgressPercent}>{Math.round(progress)}%</Text>
+                </View>
+                {book.setupComplete && (
+                  <Text style={styles.bookPaceLabel}>
+                    {book.chaptersCompleted}/{book.totalChapters} chapters completed
+                  </Text>
+                )}
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={COLORS.textLight} />
+            </TouchableOpacity>
+          );
+        })}
+
+        {(!books || books.length === 0) && (
+          <Card style={styles.emptyCard}>
+            <Ionicons name="library-outline" size={40} color={COLORS.textLight} />
+            <Text style={styles.emptyText}>No books available yet. More coming soon!</Text>
           </Card>
         )}
 
         <View style={styles.statsRow}>
-          <StatCard
-            icon="book-outline"
-            value={user?.totalVersesCompleted || 0}
-            label="Verses Read"
-          />
-          <StatCard
-            icon="flame-outline"
-            value={streak?.longest || 0}
-            label="Best Streak"
-          />
-          <StatCard
-            icon="shield-outline"
-            value={user?.disciplineLevel || 1}
-            label="Wisdom Level"
-          />
+          <StatCard icon="book-outline" value={user?.totalVersesCompleted || 0} label="Verses Read" />
+          <StatCard icon="flame-outline" value={streak?.longest || 0} label="Best Streak" />
+          <StatCard icon="shield-outline" value={user?.disciplineLevel || 1} label="Wisdom Level" />
         </View>
       </ScrollView>
-
-      <Modal
-        visible={showDisciplineModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowDisciplineModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>You're on a roll!</Text>
-            <Text style={styles.modalSubtitle}>
-              A week of consistency — that's impressive! Ready to take your practice to the next level?
-            </Text>
-            {disciplineData?.options?.map((option) => (
-              <TouchableOpacity
-                key={option.action}
-                style={[styles.modalOption, option.disabled && styles.modalOptionDisabled]}
-                onPress={() => !option.disabled && handleDisciplineAction(option.action)}
-                disabled={option.disabled}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.modalOptionLabel}>{option.label}</Text>
-                <Text style={styles.modalOptionDesc}>{option.description}</Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={styles.modalDismiss}
-              onPress={() => setShowDisciplineModal(false)}
-            >
-              <Text style={styles.modalDismissText}>Maybe later</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 };
-
-const CheckItem = ({ done, label }) => (
-  <View style={styles.checkItem}>
-    <Ionicons
-      name={done ? 'checkmark-circle' : 'ellipse-outline'}
-      size={20}
-      color={done ? COLORS.success : COLORS.textLight}
-    />
-    <Text style={[styles.checkLabel, done && styles.checkLabelDone]}>{label}</Text>
-  </View>
-);
 
 const StatCard = ({ icon, value, label }) => (
   <Card style={styles.statCard}>
@@ -241,9 +194,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   scrollContent: {
     padding: SPACING.lg,
     paddingTop: SPACING.xl,
+    paddingBottom: SPACING.xxl,
   },
   header: {
     flexDirection: 'row',
@@ -277,79 +236,128 @@ const styles = StyleSheet.create({
     ...FONTS.tiny,
     color: COLORS.warning,
   },
-  progressCard: {
+  timerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
     marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.warning,
+    ...SHADOWS.small,
   },
-  progressTitle: {
-    ...FONTS.title,
+  timerCardCompleted: {
+    borderColor: COLORS.success,
+  },
+  timerIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: `${COLORS.warning}15`,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.md,
+  },
+  timerIconWrapCompleted: {
+    backgroundColor: `${COLORS.success}15`,
+  },
+  timerInfo: {
+    flex: 1,
+  },
+  timerLabel: {
+    ...FONTS.small,
+    color: COLORS.textSecondary,
+    marginBottom: 2,
+  },
+  timerValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: COLORS.warning,
+    fontVariant: ['tabular-nums'],
+  },
+  timerValueCompleted: {
+    color: COLORS.success,
+  },
+  timerHintWrap: {
+    maxWidth: 90,
+  },
+  timerHint: {
+    ...FONTS.tiny,
+    color: COLORS.textSecondary,
+    textAlign: 'right',
+  },
+  timerHintCompleted: {
+    color: COLORS.success,
+    fontWeight: '600',
+  },
+  sectionTitle: {
+    ...FONTS.subheading,
     marginBottom: SPACING.md,
   },
-  checklistRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: SPACING.md,
-  },
-  checkItem: {
+  bookCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    marginBottom: SPACING.md,
+    ...SHADOWS.small,
   },
-  checkLabel: {
-    ...FONTS.small,
-    marginLeft: SPACING.xs,
-  },
-  checkLabelDone: {
-    color: COLORS.success,
-  },
-  ctaButton: {
-    marginBottom: SPACING.lg,
-  },
-  completedCard: {
-    alignItems: 'center',
-    marginBottom: SPACING.lg,
-  },
-  completedText: {
-    ...FONTS.body,
-    color: COLORS.success,
-    marginTop: SPACING.sm,
-    textAlign: 'center',
-  },
-  completedActions: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.md,
-  },
-  rereadButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
+  bookIconWrap: {
+    width: 52,
+    height: 52,
     borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-    gap: SPACING.sm,
+    backgroundColor: `${COLORS.primary}12`,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.md,
   },
-  rereadText: {
+  bookInfo: {
+    flex: 1,
+  },
+  bookName: {
+    ...FONTS.title,
+    marginBottom: 2,
+  },
+  bookMeta: {
     ...FONTS.small,
+    marginBottom: SPACING.sm,
+  },
+  bookProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  bookProgressBarWrap: {
+    flex: 1,
+    marginRight: SPACING.sm,
+  },
+  bookProgressPercent: {
+    ...FONTS.tiny,
+    fontWeight: '600',
     color: COLORS.primary,
-    fontWeight: '600',
+    width: 32,
+    textAlign: 'right',
   },
-  bonusButton: {
-    flexDirection: 'row',
+  bookPaceLabel: {
+    ...FONTS.tiny,
+    marginTop: SPACING.xs,
+    color: COLORS.success,
+  },
+  emptyCard: {
     alignItems: 'center',
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.success,
-    gap: SPACING.sm,
+    paddingVertical: SPACING.xl,
   },
-  bonusText: {
-    ...FONTS.small,
-    color: COLORS.white,
-    fontWeight: '600',
+  emptyText: {
+    ...FONTS.body,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.md,
+    textAlign: 'center',
   },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginTop: SPACING.lg,
   },
   statCard: {
     flex: 1,
@@ -367,55 +375,6 @@ const styles = StyleSheet.create({
   statLabel: {
     ...FONTS.tiny,
     marginTop: 2,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: COLORS.overlay,
-    justifyContent: 'center',
-    paddingHorizontal: SPACING.lg,
-  },
-  modalContent: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-  },
-  modalTitle: {
-    ...FONTS.subheading,
-    textAlign: 'center',
-    marginBottom: SPACING.xs,
-  },
-  modalSubtitle: {
-    ...FONTS.body,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    marginBottom: SPACING.lg,
-  },
-  modalOption: {
-    backgroundColor: COLORS.surfaceAlt,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  modalOptionDisabled: {
-    opacity: 0.4,
-  },
-  modalOptionLabel: {
-    ...FONTS.title,
-    fontSize: 15,
-    marginBottom: 2,
-  },
-  modalOptionDesc: {
-    ...FONTS.small,
-  },
-  modalDismiss: {
-    alignItems: 'center',
-    paddingVertical: SPACING.md,
-    marginTop: SPACING.sm,
-  },
-  modalDismissText: {
-    ...FONTS.small,
-    color: COLORS.primary,
-    fontWeight: '600',
   },
 });
 

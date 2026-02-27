@@ -10,6 +10,18 @@ const dailyProgressSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  bookId: {
+    type: String,
+    default: null,
+  },
+  chapter: {
+    type: Number,
+    default: null,
+  },
+  verseRange: {
+    start: { type: Number, default: null },
+    end: { type: Number, default: null },
+  },
   versesAssigned: [
     {
       type: mongoose.Schema.Types.ObjectId,
@@ -40,6 +52,6 @@ const dailyProgressSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-dailyProgressSchema.index({ userId: 1, date: 1 }, { unique: true });
+dailyProgressSchema.index({ userId: 1, date: 1, bookId: 1 }, { unique: true });
 
 module.exports = mongoose.model('DailyProgress', dailyProgressSchema);

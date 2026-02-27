@@ -35,7 +35,7 @@ const LoginScreen = ({ navigation }) => {
     setLoading(true);
     try {
       await login(email.trim().toLowerCase(), password);
-    } catch (error) {console.log(error, "error");
+    } catch (error) {
       Alert.alert('Login Failed', error.message);
     } finally {
       setLoading(false);

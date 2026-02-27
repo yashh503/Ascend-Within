@@ -19,7 +19,8 @@ import ReflectionScreen from '../screens/ReflectionScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import LeaderboardScreen from '../screens/LeaderboardScreen';
-import BonusReadingScreen from '../screens/BonusReadingScreen';
+import BookSetupScreen from '../screens/BookSetupScreen';
+import BookDetailScreen from '../screens/BookDetailScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -78,10 +79,11 @@ const MainTabs = () => (
 const MainStack = () => (
   <Stack.Navigator screenOptions={screenOptions}>
     <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
-    <Stack.Screen name="Reading" component={ReadingScreen} options={{ title: 'Daily Reading' }} />
+    <Stack.Screen name="BookDetail" component={BookDetailScreen} options={({ route }) => ({ title: route.params?.bookName || 'Book' })} />
+    <Stack.Screen name="BookSetup" component={BookSetupScreen} options={{ title: 'Reading Pace', headerShown: false }} />
+    <Stack.Screen name="Reading" component={ReadingScreen} options={{ title: 'Reading' }} />
     <Stack.Screen name="Quiz" component={QuizScreen} options={{ title: 'Knowledge Check' }} />
     <Stack.Screen name="Reflection" component={ReflectionScreen} options={{ title: 'Reflect' }} />
-    <Stack.Screen name="BonusReading" component={BonusReadingScreen} options={{ title: 'Bonus Reading' }} />
   </Stack.Navigator>
 );
 

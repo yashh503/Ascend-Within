@@ -19,8 +19,9 @@ import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 
 const MIN_LENGTH = 120;
 
-const ReflectionScreen = ({ navigation }) => {
+const ReflectionScreen = ({ navigation, route }) => {
   const { fetchDailyStatus } = useApp();
+  const bookId = route.params?.bookId;
   const [reflection, setReflection] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -36,7 +37,7 @@ const ReflectionScreen = ({ navigation }) => {
 
     setLoading(true);
     try {
-      await progressAPI.submitReflection({ reflection: reflection.trim() });
+      await progressAPI.submitReflection({ reflection: reflection.trim(), bookId });
       await fetchDailyStatus();
       setSubmitted(true);
     } catch (error) {
@@ -57,7 +58,7 @@ const ReflectionScreen = ({ navigation }) => {
           </Text>
           <Button
             title="Return Home"
-            onPress={() => navigation.navigate('MainTabs')}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'Home' })}
             style={styles.homeButton}
           />
         </View>

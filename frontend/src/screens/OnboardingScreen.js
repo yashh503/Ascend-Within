@@ -16,13 +16,12 @@ import { useAuth } from '../context/AuthContext';
 import PermissionsManager from '../utils/permissionsManager';
 import { COLORS, SPACING, FONTS, RADIUS, SHADOWS } from '../constants/theme';
 
-const STEPS = ['Wisdom Path', 'Daily Target', 'Notifications'];
+const STEPS = ['Wisdom Path', 'Notifications'];
 
 const OnboardingScreen = () => {
   const { completeOnboarding } = useAuth();
   const [step, setStep] = useState(0);
   const [wisdomPath, setWisdomPath] = useState(null);
-  const [dailyTarget, setDailyTarget] = useState(null);
   const [notificationGranted, setNotificationGranted] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -42,8 +41,7 @@ const OnboardingScreen = () => {
   const canProceed = () => {
     switch (step) {
       case 0: return !!wisdomPath;
-      case 1: return !!dailyTarget;
-      case 2: return true;
+      case 1: return true;
       default: return false;
     }
   };
@@ -54,7 +52,7 @@ const OnboardingScreen = () => {
     } else {
       setLoading(true);
       try {
-        await completeOnboarding(wisdomPath, dailyTarget);
+        await completeOnboarding(wisdomPath);
       } catch (error) {
         Alert.alert('Error', error.message);
       } finally {
@@ -96,36 +94,6 @@ const OnboardingScreen = () => {
         );
 
       case 1:
-        return (
-          <View>
-            <Text style={styles.stepTitle}>Set your daily target</Text>
-            <Text style={styles.stepDescription}>
-              How many verses would you like to read each day? Start small if you are new.
-            </Text>
-            {[
-              { value: 1, label: '1 verse', desc: 'Gentle start — perfect for beginners' },
-              { value: 5, label: '5 verses', desc: 'Moderate — build a steady practice' },
-              { value: 10, label: '10 verses', desc: 'Committed — for dedicated practitioners' },
-            ].map((option) => (
-              <TouchableOpacity
-                key={option.value}
-                style={[styles.targetCard, dailyTarget === option.value && styles.targetCardSelected]}
-                onPress={() => setDailyTarget(option.value)}
-                activeOpacity={0.7}
-              >
-                <View>
-                  <Text style={styles.targetLabel}>{option.label}</Text>
-                  <Text style={styles.targetDesc}>{option.desc}</Text>
-                </View>
-                {dailyTarget === option.value && (
-                  <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-        );
-
-      case 2:
         return (
           <View>
             <Text style={styles.stepTitle}>Enable notifications</Text>
@@ -282,28 +250,6 @@ const styles = StyleSheet.create({
     ...FONTS.small,
     textAlign: 'center',
     fontStyle: 'italic',
-  },
-  targetCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.md,
-    borderWidth: 2,
-    borderColor: COLORS.border,
-    ...SHADOWS.small,
-  },
-  targetCardSelected: {
-    borderColor: COLORS.primary,
-  },
-  targetLabel: {
-    ...FONTS.title,
-    marginBottom: 2,
-  },
-  targetDesc: {
-    ...FONTS.small,
   },
   permItem: {
     flexDirection: 'row',

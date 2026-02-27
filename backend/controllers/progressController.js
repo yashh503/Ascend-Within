@@ -1,5 +1,7 @@
 const DailyProgress = require('../models/DailyProgress');
+const BookProgress = require('../models/BookProgress');
 const User = require('../models/User');
+const { BOOKS } = require('../constants/books');
 
 const getTodayString = () => {
   return new Date().toISOString().split('T')[0];
@@ -7,11 +9,21 @@ const getTodayString = () => {
 
 const completeReading = async (req, res) => {
   try {
+    const { bookId } = req.body;
     const today = getTodayString();
-    const progress = await DailyProgress.findOne({ userId: req.user._id, date: today });
+
+    if (!bookId) {
+      return res.status(400).json({ message: 'bookId is required' });
+    }
+
+    const progress = await DailyProgress.findOne({
+      userId: req.user._id,
+      date: today,
+      bookId,
+    });
 
     if (!progress) {
-      return res.status(404).json({ message: 'No daily progress found. Please start today\'s reading first.' });
+      return res.status(404).json({ message: 'No reading session found. Please start reading first.' });
     }
 
     if (progress.readingCompleted) {
@@ -23,28 +35,38 @@ const completeReading = async (req, res) => {
 
     res.json({ message: 'Great job finishing today\'s reading!', readingCompleted: true });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
 const submitQuiz = async (req, res) => {
   try {
-    const { score, total } = req.body;
+    const { score, total, bookId } = req.body;
     const today = getTodayString();
 
-    if (score == null || total == null) {
-      return res.status(400).json({ message: 'Score and total are required' });
+    if (score == null || total == null || !bookId) {
+      return res.status(400).json({ message: 'score, total, and bookId are required' });
     }
 
-    const progress = await DailyProgress.findOne({ userId: req.user._id, date: today });
+    const book = BOOKS[bookId];
+    if (!book) {
+      return res.status(404).json({ message: 'Book not found' });
+    }
+
+    const progress = await DailyProgress.findOne({
+      userId: req.user._id,
+      date: today,
+      bookId,
+    });
 
     if (!progress) {
-      return res.status(404).json({ message: 'No daily progress found. Please read today\'s verses first.' });
+      return res.status(404).json({ message: 'No reading session found. Please read the verses first.' });
     }
 
     if (progress.passed) {
       return res.json({
-        message: 'You\'ve already aced today\'s quiz!',
+        message: 'You\'ve already aced this quiz!',
         progress: {
           quizScore: progress.quizScore,
           quizTotal: progress.quizTotal,
@@ -62,6 +84,33 @@ const submitQuiz = async (req, res) => {
 
     if (passed) {
       const user = req.user;
+      const bookProgress = await BookProgress.findOne({ userId: user._id, bookId });
+
+      if (!bookProgress) {
+        return res.status(404).json({ message: 'Book progress not found' });
+      }
+
+      // Calculate how many verses were in this session
+      const versesInSession = progress.verseRange.end - progress.verseRange.start + 1;
+
+      // Advance BookProgress position
+      bookProgress.currentVerseInChapter += versesInSession;
+      bookProgress.totalVersesRead += versesInSession;
+
+      // Check if chapter is complete
+      const chapterMeta = book.chapters[bookProgress.currentChapter];
+      if (bookProgress.currentVerseInChapter >= chapterMeta.verseCount) {
+        bookProgress.chaptersCompleted.push({
+          chapter: bookProgress.currentChapter,
+          completedAt: new Date(),
+        });
+        bookProgress.currentChapter += 1;
+        bookProgress.currentVerseInChapter = 0;
+      }
+
+      await bookProgress.save();
+
+      // Update user streak
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayString = yesterday.toISOString().split('T')[0];
@@ -77,9 +126,7 @@ const submitQuiz = async (req, res) => {
       }
 
       user.lastCompletedDate = new Date();
-      user.currentVerseIndex += user.dailyTarget;
-      user.totalVersesCompleted += user.dailyTarget;
-
+      user.totalVersesCompleted += versesInSession;
       await user.save();
     }
 
@@ -95,20 +142,24 @@ const submitQuiz = async (req, res) => {
         : 'Almost there! Review the verses and give it another go.',
     });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
 const submitReflection = async (req, res) => {
   try {
-    const { reflection } = req.body;
+    const { reflection, bookId } = req.body;
     const today = getTodayString();
 
     if (!reflection || reflection.trim().length < 120) {
       return res.status(400).json({ message: 'Reflection must be at least 120 characters' });
     }
 
-    const progress = await DailyProgress.findOne({ userId: req.user._id, date: today });
+    const query = { userId: req.user._id, date: today };
+    if (bookId) query.bookId = bookId;
+
+    const progress = await DailyProgress.findOne(query);
 
     if (!progress) {
       return res.status(404).json({ message: 'No daily progress found for today' });
@@ -119,23 +170,33 @@ const submitReflection = async (req, res) => {
 
     res.json({ message: 'Reflection saved', reflection: progress.reflection });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
 const getStatus = async (req, res) => {
   try {
     const today = getTodayString();
-    const progress = await DailyProgress.findOne({ userId: req.user._id, date: today }).populate('versesAssigned');
     const user = req.user;
+
+    // Get all today's progress entries (one per book)
+    const todayProgress = await DailyProgress.find({ userId: user._id, date: today });
+
+    const sessions = todayProgress.map((p) => ({
+      bookId: p.bookId,
+      chapter: p.chapter,
+      verseRange: p.verseRange,
+      readingCompleted: p.readingCompleted,
+      quizTaken: p.quizScore !== null,
+      quizPassed: p.passed,
+      reflectionDone: !!p.reflection,
+    }));
 
     res.json({
       today: {
-        hasProgress: !!progress,
-        readingCompleted: progress ? progress.readingCompleted : false,
-        quizTaken: progress ? progress.quizScore !== null : false,
-        quizPassed: progress ? progress.passed : false,
-        reflectionDone: progress ? !!progress.reflection : false,
+        hasProgress: todayProgress.length > 0,
+        sessions,
       },
       streak: {
         current: user.streakCount,
@@ -143,11 +204,12 @@ const getStatus = async (req, res) => {
       },
       stats: {
         totalVersesCompleted: user.totalVersesCompleted,
-        disciplineLevel: user.disciplineLevel,
+        wisdomLevel: user.disciplineLevel,
       },
     });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -157,9 +219,18 @@ const getAnalytics = async (req, res) => {
 
     const allProgress = await DailyProgress.find({ userId: user._id });
 
-    const totalDays = allProgress.length;
-    const completedDays = allProgress.filter((p) => p.passed).length;
+    const totalDays = new Set(allProgress.map((p) => p.date)).size;
+    const completedDays = new Set(allProgress.filter((p) => p.passed).map((p) => p.date)).size;
     const reflectionsDone = allProgress.filter((p) => p.reflection).length;
+
+    // Get book progress
+    const bookProgressList = await BookProgress.find({ userId: user._id });
+    const books = bookProgressList.map((bp) => ({
+      bookId: bp.bookId,
+      chaptersCompleted: bp.chaptersCompleted.length,
+      totalVersesRead: bp.totalVersesRead,
+      currentChapter: bp.currentChapter,
+    }));
 
     res.json({
       streak: {
@@ -171,20 +242,32 @@ const getAnalytics = async (req, res) => {
       completedDays,
       completionRate: totalDays > 0 ? Math.round((completedDays / totalDays) * 100) : 0,
       reflectionsDone,
-      disciplineLevel: user.disciplineLevel,
+      wisdomLevel: user.disciplineLevel,
+      books,
     });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
 const resetQuiz = async (req, res) => {
   try {
+    const { bookId } = req.body;
     const today = getTodayString();
-    const progress = await DailyProgress.findOne({ userId: req.user._id, date: today });
+
+    if (!bookId) {
+      return res.status(400).json({ message: 'bookId is required' });
+    }
+
+    const progress = await DailyProgress.findOne({
+      userId: req.user._id,
+      date: today,
+      bookId,
+    });
 
     if (!progress) {
-      return res.status(404).json({ message: 'No daily progress found for today' });
+      return res.status(404).json({ message: 'No reading session found for today' });
     }
 
     if (progress.passed) {
@@ -197,7 +280,8 @@ const resetQuiz = async (req, res) => {
 
     res.json({ message: 'Quiz reset. Take another look at the verses and try again.' });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 

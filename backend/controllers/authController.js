@@ -35,7 +35,8 @@ const register = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -67,7 +68,7 @@ const login = async (req, res) => {
         name: user.name,
         email: user.email,
         wisdomPath: user.wisdomPath,
-        dailyTarget: user.dailyTarget,
+
         onboardingComplete: user.onboardingComplete,
         streakCount: user.streakCount,
         longestStreak: user.longestStreak,
@@ -76,7 +77,8 @@ const login = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -89,7 +91,7 @@ const getProfile = async (req, res) => {
         name: user.name,
         email: user.email,
         wisdomPath: user.wisdomPath,
-        dailyTarget: user.dailyTarget,
+
         onboardingComplete: user.onboardingComplete,
         streakCount: user.streakCount,
         longestStreak: user.longestStreak,
@@ -98,7 +100,8 @@ const getProfile = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 

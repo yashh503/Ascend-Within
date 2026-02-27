@@ -25,11 +25,6 @@ const userSchema = new mongoose.Schema({
     enum: ['hinduism'],
     default: null,
   },
-  dailyTarget: {
-    type: Number,
-    enum: [1, 5, 10],
-    default: null,
-  },
   onboardingComplete: {
     type: Boolean,
     default: false,
@@ -49,10 +44,6 @@ const userSchema = new mongoose.Schema({
   disciplineLevel: {
     type: Number,
     default: 1,
-  },
-  currentVerseIndex: {
-    type: Number,
-    default: 0,
   },
   totalVersesCompleted: {
     type: Number,

@@ -46,11 +46,8 @@ export const AuthProvider = ({ children }) => {
     return newUser;
   };
 
-  const completeOnboarding = async (wisdomPath, dailyTarget) => {
-    const response = await verseAPI.completeOnboarding({
-      wisdomPath,
-      dailyTarget,
-    });
+  const completeOnboarding = async (wisdomPath) => {
+    const response = await verseAPI.completeOnboarding({ wisdomPath });
     setUser(response.data.user);
     return response.data.user;
   };

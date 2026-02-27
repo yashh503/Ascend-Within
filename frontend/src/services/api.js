@@ -5,6 +5,7 @@ const API_URL = 'http://192.168.1.32:5151';
 
 const api = axios.create({
   baseURL: API_URL,
+  timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -19,7 +20,14 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const message = error.response?.data?.message || 'Something went wrong';
+    let message = 'Something went wrong';
+    if (error.code === 'ECONNABORTED') {
+      message = 'Request timed out. Please check your connection.';
+    } else if (!error.response) {
+      message = 'Unable to reach the server. Please check your connection.';
+    } else {
+      message = error.response.data?.message || message;
+    }
     return Promise.reject(new Error(message));
   }
 );
@@ -31,18 +39,20 @@ export const authAPI = {
 };
 
 export const verseAPI = {
-  getDailyVerses: () => api.get('/verses/daily'),
-  getBonusVerses: () => api.get('/verses/bonus'),
   completeOnboarding: (data) => api.post('/verses/onboarding', data),
+  getBooks: () => api.get('/verses/books'),
+  getBookChapters: (bookId) => api.get(`/verses/book/${bookId}/chapters`),
+  setupBook: (bookId, data) => api.post(`/verses/book/${bookId}/setup`, data),
+  getSessionVerses: (bookId) => api.get(`/verses/book/${bookId}/session`),
 };
 
 export const progressAPI = {
-  completeReading: () => api.post('/progress/complete-reading'),
+  completeReading: (data) => api.post('/progress/complete-reading', data),
   submitQuiz: (data) => api.post('/progress/quiz', data),
   submitReflection: (data) => api.post('/progress/reflection', data),
   getStatus: () => api.get('/progress/status'),
   getAnalytics: () => api.get('/progress/analytics'),
-  resetQuiz: () => api.post('/progress/reset-quiz'),
+  resetQuiz: (data) => api.post('/progress/reset-quiz', data),
 };
 
 export const leaderboardAPI = {
@@ -51,7 +61,7 @@ export const leaderboardAPI = {
 
 export const disciplineAPI = {
   update: (data) => api.post('/discipline/update', data),
-  getPrompt: () => api.get('/discipline/prompt'),
+  getPrompt: (bookId) => api.get(`/discipline/prompt${bookId ? `?bookId=${bookId}` : ''}`),
 };
 
 export default api;

@@ -1,19 +1,37 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   Alert,
+  TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import { useAuth } from '../context/AuthContext';
+import { useApp } from '../context/AppContext';
 import { COLORS, SPACING, FONTS } from '../constants/theme';
 
-const SettingsScreen = () => {
+const BOOK_ID = 'bhagavad-gita';
+
+const PACE_LABELS = {
+  half_chapter: 'Half Chapter',
+  full_chapter: 'Full Chapter',
+  custom_5: '5 verses',
+  custom_10: '10 verses',
+  custom_15: '15 verses',
+  custom_20: '20 verses',
+};
+
+const SettingsScreen = ({ navigation }) => {
   const { user, logout } = useAuth();
+  const { bookData, fetchBookChapters } = useApp();
+
+  useEffect(() => {
+    fetchBookChapters(BOOK_ID);
+  }, []);
 
   const handleLogout = () => {
     Alert.alert(
@@ -42,15 +60,17 @@ const SettingsScreen = () => {
         <Text style={styles.sectionTitle}>Practice</Text>
         <Card style={styles.settingsCard}>
           <SettingRow
-            icon="book-outline"
-            label="Daily Target"
-            value={`${user?.dailyTarget || 1} verse${user?.dailyTarget !== 1 ? 's' : ''}`}
-          />
-          <SettingRow
             icon="compass-outline"
             label="Wisdom Path"
             value={user?.wisdomPath === 'hinduism' ? 'Hinduism' : 'Not set'}
           />
+          <TouchableOpacity onPress={() => navigation.navigate('BookSetup', { bookId: BOOK_ID, bookName: 'Bhagavad Gita' })}>
+            <SettingRow
+              icon="speedometer-outline"
+              label="Reading Pace"
+              value={PACE_LABELS[bookData?.dailyTarget] || 'Not set'}
+            />
+          </TouchableOpacity>
           <SettingRow
             icon="shield-outline"
             label="Wisdom Level"

@@ -4,24 +4,25 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Dimensions,
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context'; 
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import ProgressBar from '../components/ProgressBar';
 import { verseAPI, progressAPI } from '../services/api';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 
-const { width } = Dimensions.get('window');
-
-const ReadingScreen = ({ navigation }) => {
+const ReadingScreen = ({ navigation, route }) => {
+  const bookId = route.params?.bookId || 'bhagavad-gita';
   const [verses, setVerses] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(null);
+  const [chapterName, setChapterName] = useState('');
+  const [chapter, setChapter] = useState(null);
+  const [verseRange, setVerseRange] = useState(null);
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -30,9 +31,21 @@ const ReadingScreen = ({ navigation }) => {
 
   const loadVerses = async () => {
     try {
-      const response = await verseAPI.getDailyVerses();
-      setVerses(response.data.verses);
-      setProgress(response.data.progress);
+      const response = await verseAPI.getSessionVerses(bookId);
+      const data = response.data;
+
+      if (data.bookComplete) {
+        Alert.alert('Congratulations!', data.message, [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
+        setLoading(false);
+        return;
+      }
+      setVerses(data.verses);
+      setProgress(data.progress);
+      setChapterName(data.chapterName);
+      setChapter(data.chapter);
+      setVerseRange(data.verseRange);
     } catch (error) {
       Alert.alert('Error', error.message);
     } finally {
@@ -61,8 +74,8 @@ const ReadingScreen = ({ navigation }) => {
       navigation.goBack();
     } else {
       try {
-        await progressAPI.completeReading();
-        navigation.navigate('Quiz', { verses });
+        await progressAPI.completeReading({ bookId });
+        navigation.navigate('Quiz', { verses, bookId });
       } catch (error) {
         Alert.alert('Error', error.message);
       }
@@ -91,6 +104,9 @@ const ReadingScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.topBar}>
+        <Text style={styles.chapterTitle}>
+          Chapter {chapter} — {chapterName}
+        </Text>
         <Text style={styles.counter}>
           Verse {currentIndex + 1} of {verses.length}
         </Text>
@@ -190,6 +206,13 @@ const styles = StyleSheet.create({
   topBar: {
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
+  },
+  chapterTitle: {
+    ...FONTS.small,
+    fontWeight: '600',
+    color: COLORS.primary,
+    textAlign: 'center',
+    marginBottom: SPACING.xs,
   },
   counter: {
     ...FONTS.small,
