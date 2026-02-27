@@ -1,11 +1,11 @@
-import React, { useEffect, useRef } from 'react';
-import { ActivityIndicator, View, AppState } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, View, Modal } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
-import { navigationRef, navigate } from './navigationRef';
+import { navigationRef } from './navigationRef';
 import BlockingService from '../utils/blockingSimulator';
 import { COLORS } from '../constants/theme';
 
@@ -85,7 +85,7 @@ const MainStack = () => (
     <Stack.Screen
       name="Blocked"
       component={BlockedScreen}
-      options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }}
+      options={{ headerShown: false, gestureEnabled: false }}
     />
   </Stack.Navigator>
 );
@@ -95,19 +95,27 @@ const TASK_SCREENS = ['Reading', 'Quiz', 'Reflection', 'Blocked'];
 
 const AppNavigator = () => {
   const { isAuthenticated, isOnboarded, loading } = useAuth();
-  const appStateRef = useRef(AppState.currentState);
   const monitoringStarted = useRef(false);
+  const [showBlocked, setShowBlocked] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated && isOnboarded && !monitoringStarted.current) {
       monitoringStarted.current = true;
       BlockingService.startMonitoring((blockedApp) => {
+        console.log('[AppNavigator] onBlocked callback fired for:', blockedApp);
+
         // Don't interrupt if user is on a task screen
         const currentRoute = navigationRef.current?.getCurrentRoute();
+        console.log('[AppNavigator] currentRoute:', currentRoute?.name);
+
         if (currentRoute && TASK_SCREENS.includes(currentRoute.name)) {
+          console.log('[AppNavigator] On task screen, skipping');
           return;
         }
-        navigate('Blocked');
+
+        // Show blocked overlay using React state — this is 100% reliable
+        console.log('[AppNavigator] Setting showBlocked = true');
+        setShowBlocked(true);
       });
     }
 
@@ -119,38 +127,8 @@ const AppNavigator = () => {
     };
   }, [isAuthenticated, isOnboarded]);
 
-  // When app comes back to foreground (service brought us back),
-  // the native module's onHostResume fires and emits "onAppBlocked".
-  // But we also handle the case where JS wasn't ready yet:
-  useEffect(() => {
-    if (!isAuthenticated || !isOnboarded) return;
-
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (
-        appStateRef.current.match(/inactive|background/) &&
-        nextState === 'active'
-      ) {
-        // Small delay to let the native module's onHostResume fire first
-        setTimeout(() => {
-          const currentRoute = navigationRef.current?.getCurrentRoute();
-          if (currentRoute && !TASK_SCREENS.includes(currentRoute.name)) {
-            // The native onHostResume + event listener should handle navigation,
-            // but this is a safety fallback
-          }
-        }, 300);
-      }
-      appStateRef.current = nextState;
-    });
-
-    return () => subscription.remove();
-  }, [isAuthenticated, isOnboarded]);
-
-  const handleNavigationStateChange = () => {
-    const currentRoute = navigationRef.current?.getCurrentRoute();
-    if (currentRoute) {
-      const isTaskScreen = TASK_SCREENS.includes(currentRoute.name);
-      BlockingService.setOnTaskScreen(isTaskScreen);
-    }
+  const handleDismissBlocked = () => {
+    setShowBlocked(false);
   };
 
   if (loading) {
@@ -162,18 +140,42 @@ const AppNavigator = () => {
   }
 
   return (
-    <NavigationContainer
-      ref={navigationRef}
-      onStateChange={handleNavigationStateChange}
-    >
-      {!isAuthenticated ? (
-        <AuthStack />
-      ) : !isOnboarded ? (
-        <OnboardingStack />
-      ) : (
-        <MainStack />
-      )}
-    </NavigationContainer>
+    <>
+      <NavigationContainer ref={navigationRef}>
+        {!isAuthenticated ? (
+          <AuthStack />
+        ) : !isOnboarded ? (
+          <OnboardingStack />
+        ) : (
+          <MainStack />
+        )}
+      </NavigationContainer>
+
+      {/* Blocked overlay — renders on top of everything using Modal */}
+      <Modal
+        visible={showBlocked}
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => {
+          // Prevent Android back button from dismissing
+        }}
+      >
+        <BlockedScreen
+          navigation={{
+            goBack: handleDismissBlocked,
+            navigate: (screen) => {
+              setShowBlocked(false);
+              // Small delay to let the modal close before navigating
+              setTimeout(() => {
+                if (navigationRef.current) {
+                  navigationRef.current.navigate(screen);
+                }
+              }, 100);
+            },
+          }}
+        />
+      </Modal>
+    </>
   );
 };
 

@@ -2,20 +2,15 @@
  * Expo Config Plugin — App Blocker (Android)
  *
  * Automatically injects during `npx expo prebuild`:
- *   1. Permissions in AndroidManifest (PACKAGE_USAGE_STATS, SYSTEM_ALERT_WINDOW, FOREGROUND_SERVICE, etc.)
+ *   1. Permissions in AndroidManifest
  *   2. Service declaration in AndroidManifest
- *   3. Native Java files (AppBlockerModule, AppBlockerPackage, AppBlockerService) into android/
+ *   3. Native Java files (AppBlockerModule, AppBlockerPackage, AppBlockerService)
  *   4. Registers the native package in MainApplication.kt
- *
- * The AppBlockerService is a Foreground Service that:
- *   - Runs persistently even when the app is in the background
- *   - Polls UsageStatsManager every 1s to detect blocked apps in foreground
- *   - Brings the app to front and emits "onAppBlocked" event to JS
  *
  * Usage in app.json:
  *   "plugins": ["./plugins/withAppBlocker"]
  *
- * Then just run:
+ * Then run:
  *   npx expo prebuild --clean
  *   npx expo run:android
  */
@@ -118,16 +113,35 @@ function writeNativeFiles(config) {
         packagePath
       );
 
-      // Ensure directory exists
       fs.mkdirSync(javaDir, { recursive: true });
 
-      // ── AppBlockerService.java (Foreground Service) ──
+      // ── Splash screen drawable (fixes missing splashscreen_logo) ──
+      const drawableDir = path.join(
+        config.modRequest.platformProjectRoot,
+        'app', 'src', 'main', 'res', 'drawable'
+      );
+      fs.mkdirSync(drawableDir, { recursive: true });
+      const splashPath = path.join(drawableDir, 'splashscreen_logo.xml');
+      if (!fs.existsSync(splashPath)) {
+        fs.writeFileSync(splashPath, `<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="100dp"
+    android:height="100dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <path
+        android:fillColor="#FAFAF8"
+        android:pathData="M0,0h100v100H0z" />
+</vector>
+`);
+      }
+
+      // ── AppBlockerService.java ──
       fs.writeFileSync(
         path.join(javaDir, 'AppBlockerService.java'),
         getAppBlockerServiceSource(packageName)
       );
 
-      // ── AppBlockerModule.java (React Native bridge) ──
+      // ── AppBlockerModule.java ──
       fs.writeFileSync(
         path.join(javaDir, 'AppBlockerModule.java'),
         getAppBlockerModuleSource(packageName)
@@ -150,25 +164,21 @@ function writeNativeFiles(config) {
 function registerPackage(config) {
   return withMainApplication(config, (config) => {
     let contents = config.modResults.contents;
-    const language = config.modResults.language; // 'java' or 'kt'
+    const language = config.modResults.language;
 
     if (language === 'kt' || contents.includes('class MainApplication')) {
-      // Kotlin MainApplication (Expo SDK 50+)
       if (!contents.includes('AppBlockerPackage')) {
-        // Add import
         contents = contents.replace(
           /^(package .+\n)/m,
           `$1\nimport ${config.android?.package || 'com.monkmode.app'}.AppBlockerPackage\n`
         );
 
-        // Add to getPackages — find the PackageList line and append
         if (contents.includes('PackageList(this).packages')) {
           contents = contents.replace(
             'PackageList(this).packages',
             'PackageList(this).packages.apply { add(AppBlockerPackage()) }'
           );
         } else if (contents.includes('PackageList(this)')) {
-          // Alternative pattern
           contents = contents.replace(
             /override fun getPackages\(\): List<ReactPackage> \{([\s\S]*?)return (PackageList\(this\)[\s\S]*?)(\n\s*\})/m,
             (match, before, pkgList, end) => {
@@ -178,13 +188,11 @@ function registerPackage(config) {
         }
       }
     } else {
-      // Java MainApplication (older Expo)
       if (!contents.includes('AppBlockerPackage')) {
         contents = contents.replace(
           /^(package .+;)/m,
           `$1\nimport ${config.android?.package || 'com.monkmode.app'}.AppBlockerPackage;`
         );
-
         contents = contents.replace(
           'return packages;',
           'packages.add(new AppBlockerPackage());\n          return packages;'
@@ -211,9 +219,15 @@ module.exports = withAppBlocker;
 
 // ─────────────────────────────────────────────────────────────
 // AppBlockerService.java — Foreground Service
-// This runs independently of the React Native JS thread.
-// It polls UsageStatsManager and brings the app to front
-// when a blocked app is detected.
+//
+// KEY DESIGN: Uses a static flag (AppBlockerModule.pendingBlock)
+// to communicate with the module, because singleTask activity
+// doesn't update getIntent() — it calls onNewIntent() which
+// React Native doesn't expose. So instead:
+//   1. Service sets AppBlockerModule.pendingBlock = true
+//   2. Service launches our activity (brings to front)
+//   3. Module's onHostResume() checks the static flag
+//   4. Module emits "onAppBlocked" to JS
 // ─────────────────────────────────────────────────────────────
 
 function getAppBlockerServiceSource(packageName) {
@@ -224,7 +238,6 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
-import android.app.AppOpsManager;
 import android.app.usage.UsageEvents;
 import android.app.usage.UsageStatsManager;
 import android.content.Context;
@@ -234,7 +247,6 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
-import android.provider.Settings;
 import android.util.Log;
 
 import org.json.JSONArray;
@@ -259,10 +271,12 @@ public class AppBlockerService extends Service {
     private Set<String> restricted = new HashSet<>();
     private String lastBlocked = "";
     private long lastBlockedTime = 0;
+    private int pollCount = 0;
 
     @Override
     public void onCreate() {
         super.onCreate();
+        Log.d(TAG, "Service created");
         createNotificationChannel();
         handlerThread = new HandlerThread("AppBlockerPollThread");
         handlerThread.start();
@@ -271,15 +285,17 @@ public class AppBlockerService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        Log.d(TAG, "Service started");
         startForeground(NOTIFICATION_ID, buildNotification());
         loadRestricted();
+        Log.d(TAG, "Restricted apps loaded: " + restricted.size() + " apps: " + restricted);
         startPolling();
-        // If system kills us, restart
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
+        Log.d(TAG, "Service destroyed");
         stopPolling();
         if (handlerThread != null) {
             handlerThread.quitSafely();
@@ -342,7 +358,9 @@ public class AppBlockerService extends Service {
                 } catch (Exception e) {
                     Log.e(TAG, "Poll error", e);
                 }
-                handler.postDelayed(this, POLL_MS);
+                if (handler != null) {
+                    handler.postDelayed(this, POLL_MS);
+                }
             }
         };
         handler.post(pollRunnable);
@@ -356,30 +374,49 @@ public class AppBlockerService extends Service {
     }
 
     private void poll() {
+        pollCount++;
         SharedPreferences prefs = prefs();
-        if (!prefs.getBoolean(KEY_ENABLED, true)) return;
+        boolean enabled = prefs.getBoolean(KEY_ENABLED, true);
+        if (!enabled) {
+            if (pollCount % 30 == 0) Log.d(TAG, "poll #" + pollCount + " — blocking DISABLED, skipping");
+            return;
+        }
 
         long unlock = prefs.getLong(KEY_UNLOCK, 0);
-        if (unlock > 0 && System.currentTimeMillis() < unlock) return;
+        if (unlock > 0 && System.currentTimeMillis() < unlock) {
+            if (pollCount % 30 == 0) Log.d(TAG, "poll #" + pollCount + " — unlock active, skipping");
+            return;
+        }
 
         // Reload restricted apps on every poll to pick up changes
         loadRestricted();
-        if (restricted.isEmpty()) return;
+        if (restricted.isEmpty()) {
+            if (pollCount % 30 == 0) Log.d(TAG, "poll #" + pollCount + " — NO restricted apps");
+            return;
+        }
 
         String fg = detectForeground();
+        if (pollCount % 10 == 0) {
+            Log.d(TAG, "poll #" + pollCount + " — fg=" + fg + " restricted=" + restricted.size());
+        }
         if (fg == null) return;
-
-        // Don't block ourselves
         if (fg.equals(getPackageName())) return;
 
         if (restricted.contains(fg)) {
             long now = System.currentTimeMillis();
-            // Debounce: don't re-trigger for the same app within 3 seconds
-            if (fg.equals(lastBlocked) && now - lastBlockedTime < 3000) return;
+            if (fg.equals(lastBlocked) && now - lastBlockedTime < 3000) {
+                Log.d(TAG, "poll — throttled (same app within 3s): " + fg);
+                return;
+            }
             lastBlocked = fg;
             lastBlockedTime = now;
 
-            Log.d(TAG, "Blocked app detected: " + fg + ", bringing to front");
+            Log.d(TAG, "BLOCKED APP DETECTED: " + fg + " — bringing app to front");
+
+            // Set the static flag BEFORE launching the activity
+            AppBlockerModule.pendingBlock = true;
+            AppBlockerModule.pendingBlockedApp = fg;
+
             bringToFront();
         }
     }
@@ -410,9 +447,7 @@ public class AppBlockerService extends Service {
             Intent i = getPackageManager().getLaunchIntentForPackage(getPackageName());
             if (i != null) {
                 i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                    | Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-                i.putExtra("blocked", true);
+                    | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
                 startActivity(i);
             }
         } catch (Exception e) {
@@ -442,13 +477,15 @@ public class AppBlockerService extends Service {
 
 // ─────────────────────────────────────────────────────────────
 // AppBlockerModule.java — React Native bridge
-// Now delegates monitoring to the Foreground Service.
+//
+// Uses static pendingBlock/pendingBlockedApp flags set by the
+// service. onHostResume() checks these flags and emits the
+// "onAppBlocked" event to JS.
 // ─────────────────────────────────────────────────────────────
 
 function getAppBlockerModuleSource(packageName) {
   return `package ${packageName};
 
-import android.app.ActivityManager;
 import android.app.AppOpsManager;
 import android.app.usage.UsageEvents;
 import android.app.usage.UsageStatsManager;
@@ -475,15 +512,6 @@ import com.facebook.react.modules.core.DeviceEventManagerModule;
 
 import org.json.JSONArray;
 
-import java.util.HashSet;
-import java.util.Set;
-
-/**
- * React Native bridge for app blocking.
- * Delegates actual monitoring to AppBlockerService (foreground service).
- * Listens for the app being brought to front by the service and emits
- * "onAppBlocked" events to JS.
- */
 public class AppBlockerModule extends ReactContextBaseJavaModule implements LifecycleEventListener {
 
     private static final String TAG = "AppBlockerModule";
@@ -492,6 +520,11 @@ public class AppBlockerModule extends ReactContextBaseJavaModule implements Life
     private static final String KEY_RESTRICTED = "restricted_apps";
     private static final String KEY_ENABLED = "blocking_enabled";
     private static final String KEY_UNLOCK = "unlock_expiry";
+
+    // Static flags set by AppBlockerService when a blocked app is detected.
+    // This avoids the singleTask/onNewIntent problem with intent extras.
+    public static volatile boolean pendingBlock = false;
+    public static volatile String pendingBlockedApp = null;
 
     private final ReactApplicationContext ctx;
     private boolean serviceRunning = false;
@@ -510,26 +543,17 @@ public class AppBlockerModule extends ReactContextBaseJavaModule implements Life
 
     @Override
     public void onHostResume() {
-        // When the app resumes, check if it was because a blocked app was detected
-        try {
-            android.app.Activity activity = ctx.getCurrentActivity();
-            if (activity != null && activity.getIntent() != null) {
-                Intent intent = activity.getIntent();
-                if (intent.getBooleanExtra("blocked", false)) {
-                    // Clear the flag so we don't re-trigger
-                    intent.removeExtra("blocked");
+        Log.d(TAG, "onHostResume — pendingBlock=" + pendingBlock);
+        if (pendingBlock) {
+            final String app = pendingBlockedApp != null ? pendingBlockedApp : "unknown";
+            pendingBlock = false;
+            pendingBlockedApp = null;
 
-                    // Detect which app was in foreground before us
-                    String blockedApp = detectPreviousForeground();
-                    if (blockedApp != null) {
-                        emitBlocked(blockedApp);
-                    } else {
-                        emitBlocked("unknown");
-                    }
-                }
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "onHostResume error", e);
+            // Delay slightly to ensure JS bridge is fully ready after resume
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                Log.d(TAG, "Emitting onAppBlocked for: " + app);
+                emitBlocked(app);
+            }, 300);
         }
     }
 
@@ -584,6 +608,7 @@ public class AppBlockerModule extends ReactContextBaseJavaModule implements Life
                 arr.put(apps.getString(i));
             }
             prefs().edit().putString(KEY_RESTRICTED, arr.toString()).apply();
+            Log.d(TAG, "setRestrictedApps: " + arr.toString());
             p.resolve(true);
         } catch (Exception e) { p.reject("ERR", e.getMessage()); }
     }
@@ -592,11 +617,9 @@ public class AppBlockerModule extends ReactContextBaseJavaModule implements Life
     public void setBlockingEnabled(boolean enabled, Promise p) {
         try {
             prefs().edit().putBoolean(KEY_ENABLED, enabled).apply();
-            if (!enabled) {
+            Log.d(TAG, "setBlockingEnabled: " + enabled);
+            if (!enabled && serviceRunning) {
                 stopService();
-            } else if (serviceRunning) {
-                // Restart service to pick up the change
-                startService();
             }
             p.resolve(true);
         } catch (Exception e) { p.reject("ERR", e.getMessage()); }
@@ -614,18 +637,23 @@ public class AppBlockerModule extends ReactContextBaseJavaModule implements Life
 
     @ReactMethod
     public void startMonitoring(Promise p) {
+        Log.d(TAG, "startMonitoring called");
+        Log.d(TAG, "  usageStats=" + checkUsageStats());
+        Log.d(TAG, "  overlay=" + Settings.canDrawOverlays(ctx));
+
         if (!checkUsageStats()) {
-            p.reject("NO_PERMISSION", "Usage stats permission not granted");
-            return;
+            Log.w(TAG, "Usage stats permission NOT granted — service will start but detection may not work");
         }
         if (!Settings.canDrawOverlays(ctx)) {
-            p.reject("NO_OVERLAY", "Overlay permission not granted");
-            return;
+            Log.w(TAG, "Overlay permission NOT granted — bringToFront may not work");
         }
+
         try {
             startService();
+            Log.d(TAG, "Foreground service STARTED successfully");
             p.resolve(true);
         } catch (Exception e) {
+            Log.e(TAG, "Failed to start service", e);
             p.reject("ERR", e.getMessage());
         }
     }
@@ -644,7 +672,6 @@ public class AppBlockerModule extends ReactContextBaseJavaModule implements Life
         catch (Exception e) { p.reject("ERR", e.getMessage()); }
     }
 
-    // Required for NativeEventEmitter
     @ReactMethod
     public void addListener(String eventName) {}
 
@@ -667,32 +694,6 @@ public class AppBlockerModule extends ReactContextBaseJavaModule implements Life
 
     // ── Internal ──────────────────────────────────
 
-    private String detectPreviousForeground() {
-        try {
-            UsageStatsManager usm = (UsageStatsManager) ctx.getSystemService(Context.USAGE_STATS_SERVICE);
-            if (usm == null) return null;
-            long now = System.currentTimeMillis();
-            UsageEvents events = usm.queryEvents(now - 5000, now);
-            UsageEvents.Event event = new UsageEvents.Event();
-            String last = null;
-            String secondLast = null;
-            while (events.hasNextEvent()) {
-                events.getNextEvent(event);
-                if (event.getEventType() == UsageEvents.Event.ACTIVITY_RESUMED) {
-                    secondLast = last;
-                    last = event.getPackageName();
-                }
-            }
-            // last is us (we just resumed), secondLast is the blocked app
-            if (last != null && last.equals(ctx.getPackageName()) && secondLast != null) {
-                return secondLast;
-            }
-            return secondLast != null ? secondLast : last;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
     private String detectCurrentForeground() {
         try {
             UsageStatsManager usm = (UsageStatsManager) ctx.getSystemService(Context.USAGE_STATS_SERVICE);
@@ -711,22 +712,41 @@ public class AppBlockerModule extends ReactContextBaseJavaModule implements Life
         } catch (Exception e) { return null; }
     }
 
-    private void emitBlocked(String pkg) {
+    private void emitBlocked(final String pkg) {
+        emitBlockedWithRetry(pkg, 0);
+    }
+
+    private void emitBlockedWithRetry(final String pkg, final int attempt) {
         try {
+            if (!ctx.hasActiveReactInstance()) {
+                Log.w(TAG, "No active React instance, retry attempt " + attempt);
+                if (attempt < 5) {
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                        emitBlockedWithRetry(pkg, attempt + 1);
+                    }, 200);
+                }
+                return;
+            }
             WritableMap map = Arguments.createMap();
             map.putString("blockedApp", pkg);
             ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
                .emit("onAppBlocked", map);
+            Log.d(TAG, "onAppBlocked event EMITTED for: " + pkg + " (attempt " + attempt + ")");
         } catch (Exception e) {
-            Log.e(TAG, "emitBlocked error", e);
+            Log.e(TAG, "emitBlocked error (attempt " + attempt + ")", e);
+            if (attempt < 5) {
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                    emitBlockedWithRetry(pkg, attempt + 1);
+                }, 200);
+            }
         }
     }
 
     private boolean checkUsageStats() {
-        AppOpsManager ops = (AppOpsManager) ctx.getSystemService(Context.APP_OPS_SERVICE);
-        int mode = ops.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS,
+        android.app.AppOpsManager ops = (android.app.AppOpsManager) ctx.getSystemService(Context.APP_OPS_SERVICE);
+        int mode = ops.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
                 android.os.Process.myUid(), ctx.getPackageName());
-        return mode == AppOpsManager.MODE_ALLOWED;
+        return mode == android.app.AppOpsManager.MODE_ALLOWED;
     }
 
     private SharedPreferences prefs() {

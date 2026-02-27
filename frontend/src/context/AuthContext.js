@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authAPI, verseAPI } from '../services/api';
+import BlockingService from '../utils/blockingSimulator';
 
 const AuthContext = createContext();
 
@@ -19,7 +20,14 @@ export const AuthProvider = ({ children }) => {
       if (storedToken) {
         setToken(storedToken);
         const response = await authAPI.getProfile();
-        setUser(response.data.user);
+        const loadedUser = response.data.user;
+        setUser(loadedUser);
+
+        // Sync restricted apps from server to local storage + native module
+        // so the foreground service always has the latest list
+        if (loadedUser?.restrictedApps?.length > 0) {
+          await BlockingService.setRestrictedApps(loadedUser.restrictedApps);
+        }
       }
     } catch (error) {
       await AsyncStorage.removeItem('token');
@@ -52,6 +60,11 @@ export const AuthProvider = ({ children }) => {
       dailyTarget,
       restrictedApps,
     });
+
+    // Save restricted apps locally so the native blocking service can read them
+    await BlockingService.setRestrictedApps(restrictedApps);
+    await BlockingService.setBlockingEnabled(true);
+
     setUser(response.data.user);
     return response.data.user;
   };
