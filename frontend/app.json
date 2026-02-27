@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Ascend Within",
-    "slug": "monk-mode",
+    "slug": "Ascend-Within",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,13 +13,13 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.monkmode.app"
+      "bundleIdentifier": "com.ascendwithin.app"
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#FAFAF8"
       },
-      "package": "com.monkmode.app",
+      "package": "com.ascendwithin.app",
       "permissions": [
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE",

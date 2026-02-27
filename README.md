@@ -22,7 +22,7 @@ Edit `backend/.env` if needed:
 
 ```
 PORT=5151
-MONGODB_URI=mongodb://localhost:27017/monkmode
+MONGODB_URI=mongodb://localhost:27017/ascendwithin
 JWT_SECRET=your_secret_key_here
 JWT_EXPIRES_IN=30d
 ```

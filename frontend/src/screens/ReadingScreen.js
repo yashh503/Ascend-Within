@@ -128,17 +128,24 @@ const ReadingScreen = ({ navigation, route }) => {
           <Text style={styles.sanskritText}>{verse.sanskrit}</Text>
         </Card>
 
-        {verse.transliteration ? (
+        {/* {verse.transliteration ? (
           <Card style={styles.contentCard}>
             <Text style={styles.sectionLabel}>Transliteration</Text>
             <Text style={styles.translationText}>{verse.transliteration}</Text>
           </Card>
-        ) : null}
+        ) : null} */}
 
         {verse.translation ? (
           <Card style={styles.contentCard}>
             <Text style={styles.sectionLabel}>Translation</Text>
             <Text style={styles.translationText}>{verse.translation}</Text>
+          </Card>
+        ) : null}
+
+        {verse.translations?.hi ? (
+          <Card style={styles.contentCard}>
+            <Text style={styles.sectionLabel}>हिन्दी अनुवाद</Text>
+            <Text style={styles.translationText}>{verse.translations.hi}</Text>
           </Card>
         ) : null}
 

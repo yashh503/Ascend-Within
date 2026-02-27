@@ -30,6 +30,10 @@ const verseSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  translations: {
+    en: { type: String, default: '' },
+    hi: { type: String, default: '' },
+  },
   explanation: {
     type: String,
     default: '',
