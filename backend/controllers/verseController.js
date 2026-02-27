@@ -96,7 +96,7 @@ const getBookChapters = async (req, res) => {
     let bookProgress = await BookProgress.findOne({ userId: req.user._id, bookId });
 
     // Auto-setup small books with full_chapter pace
-    if ((!bookProgress || !bookProgress.setupComplete) && book.totalVerses < SMALL_BOOK_THRESHOLD) {
+    if ((!bookProgress || !bookProgress.setupComplete) && (book.totalVerses < SMALL_BOOK_THRESHOLD || book.totalChapters === 1)) {
       if (bookProgress) {
         bookProgress.dailyTarget = 'full_chapter';
         bookProgress.setupComplete = true;

@@ -36,7 +36,7 @@ const BookDetailScreen = ({ navigation, route }) => {
 
   const handleChapterPress = (chapter) => {
     if (chapter.status === 'locked') return;
-
+    console.log(chapter, "navigation.replace('Readingnavigation.replace('Reading");
     if (!bookData?.setupComplete) {
       navigation.navigate('BookSetup', {
         bookId,
