@@ -24,7 +24,7 @@ const getDailyVerses = async (req, res) => {
           quizScore: progress.quizScore,
           passed: progress.passed,
           reflection: progress.reflection,
-          unlockExpiresAt: progress.unlockExpiresAt,
+          readingCompleted: progress.readingCompleted,
         },
       });
     }
@@ -52,7 +52,7 @@ const getDailyVerses = async (req, res) => {
         quizScore: null,
         passed: false,
         reflection: null,
-        unlockExpiresAt: null,
+        readingCompleted: false,
       },
     });
   } catch (error) {
@@ -62,7 +62,7 @@ const getDailyVerses = async (req, res) => {
 
 const completeOnboarding = async (req, res) => {
   try {
-    const { wisdomPath, dailyTarget, restrictedApps } = req.body;
+    const { wisdomPath, dailyTarget } = req.body;
 
     if (!wisdomPath || !dailyTarget) {
       return res.status(400).json({ message: 'Wisdom path and daily target are required' });
@@ -81,21 +81,19 @@ const completeOnboarding = async (req, res) => {
       {
         wisdomPath,
         dailyTarget,
-        restrictedApps: restrictedApps || [],
         onboardingComplete: true,
       },
       { new: true }
     );
 
     res.json({
-      message: 'Onboarding complete',
+      message: 'Welcome to your journey!',
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
         wisdomPath: user.wisdomPath,
         dailyTarget: user.dailyTarget,
-        restrictedApps: user.restrictedApps,
         onboardingComplete: user.onboardingComplete,
       },
     });
@@ -104,4 +102,29 @@ const completeOnboarding = async (req, res) => {
   }
 };
 
-module.exports = { getDailyVerses, completeOnboarding };
+const getBonusVerses = async (req, res) => {
+  try {
+    const user = req.user;
+
+    if (!user.dailyTarget) {
+      return res.status(400).json({ message: 'Please complete onboarding first' });
+    }
+
+    const totalVerses = await Verse.countDocuments();
+    const startIndex = user.currentVerseIndex % totalVerses;
+
+    let verses = await Verse.find().skip(startIndex).limit(user.dailyTarget);
+
+    if (verses.length < user.dailyTarget) {
+      const remaining = user.dailyTarget - verses.length;
+      const moreVerses = await Verse.find().limit(remaining);
+      verses = [...verses, ...moreVerses];
+    }
+
+    res.json({ verses });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+module.exports = { getDailyVerses, completeOnboarding, getBonusVerses };

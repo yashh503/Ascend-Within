@@ -1,6 +1,5 @@
 import React, { createContext, useState, useContext, useCallback } from 'react';
 import { progressAPI, disciplineAPI } from '../services/api';
-import BlockingService from '../utils/blockingSimulator';
 
 const AppContext = createContext();
 
@@ -14,13 +13,6 @@ export const AppProvider = ({ children }) => {
       setLoading(true);
       const response = await progressAPI.getStatus();
       setDailyStatus(response.data);
-
-      // Sync unlock expiry with BlockingService so AppState checks work
-      const today = response.data?.today;
-      if (today?.unlockExpiresAt && today?.isUnlocked) {
-        await BlockingService.setUnlockExpiry(today.unlockExpiresAt);
-      }
-
       return response.data;
     } catch (error) {
       console.error('Failed to fetch daily status:', error.message);
@@ -49,17 +41,6 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
-  const isUnlocked = () => {
-    if (!dailyStatus?.today) return false;
-    return dailyStatus.today.isUnlocked;
-  };
-
-  const getUnlockTimeRemaining = () => {
-    if (!dailyStatus?.today?.unlockExpiresAt) return 0;
-    const remaining = new Date(dailyStatus.today.unlockExpiresAt) - new Date();
-    return Math.max(0, Math.floor(remaining / 1000 / 60));
-  };
-
   return (
     <AppContext.Provider
       value={{
@@ -69,8 +50,6 @@ export const AppProvider = ({ children }) => {
         fetchDailyStatus,
         fetchAnalytics,
         checkDisciplinePrompt,
-        isUnlocked,
-        getUnlockTimeRemaining,
       }}
     >
       {children}

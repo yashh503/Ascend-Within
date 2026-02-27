@@ -23,15 +23,11 @@
       "permissions": [
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE",
-        "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
-        "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "plugins": [
-      "expo-notifications",
-      "./plugins/withAppBlocker"
+      "expo-notifications"
     ]
   }
 }

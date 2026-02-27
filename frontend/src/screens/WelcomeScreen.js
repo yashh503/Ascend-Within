@@ -11,16 +11,16 @@ const WelcomeScreen = ({ navigation }) => {
           <Text style={styles.icon}>🪷</Text>
           <Text style={styles.title}>Ascend Within</Text>
           <Text style={styles.subtitle}>
-            Cultivate discipline through ancient wisdom.{'\n'}
+            Grow through ancient wisdom.{'\n'}
             One verse at a time.
           </Text>
         </View>
 
         <View style={styles.features}>
-          <FeatureItem text="Read sacred verses daily" />
-          <FeatureItem text="Test your understanding" />
-          <FeatureItem text="Earn focused screen time" />
-          <FeatureItem text="Build lasting discipline" />
+          <FeatureItem text="Discover sacred verses daily" />
+          <FeatureItem text="Test your understanding with quizzes" />
+          <FeatureItem text="Reflect and deepen your practice" />
+          <FeatureItem text="Compete on the leaderboard" />
         </View>
 
         <View style={styles.actions}>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context'; 
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import Card from '../components/Card';
@@ -22,7 +22,7 @@ import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 
 const HomeScreen = ({ navigation }) => {
   const { user, updateUser } = useAuth();
-  const { dailyStatus, fetchDailyStatus, checkDisciplinePrompt, isUnlocked, getUnlockTimeRemaining } = useApp();
+  const { dailyStatus, fetchDailyStatus, checkDisciplinePrompt } = useApp();
   const [refreshing, setRefreshing] = useState(false);
   const [showDisciplineModal, setShowDisciplineModal] = useState(false);
   const [disciplineData, setDisciplineData] = useState(null);
@@ -54,7 +54,6 @@ const HomeScreen = ({ navigation }) => {
       updateUser({
         disciplineLevel: response.data.disciplineLevel,
         dailyTarget: response.data.dailyTarget,
-        restrictedApps: response.data.restrictedApps,
       });
       setShowDisciplineModal(false);
     } catch (error) {
@@ -68,7 +67,7 @@ const HomeScreen = ({ navigation }) => {
   const getProgress = () => {
     if (!status) return 0;
     let steps = 0;
-    if (status.versesRead > 0) steps++;
+    if (status.readingCompleted) steps++;
     if (status.quizPassed) steps++;
     if (status.reflectionDone) steps++;
     return (steps / 3) * 100;
@@ -105,31 +104,21 @@ const HomeScreen = ({ navigation }) => {
           <Text style={styles.progressTitle}>Today's Progress</Text>
           <ProgressBar progress={getProgress()} />
           <View style={styles.checklistRow}>
-            <CheckItem done={status?.versesRead > 0} label="Read verses" />
+            <CheckItem done={status?.readingCompleted} label="Read verses" />
             <CheckItem done={status?.quizPassed} label="Pass quiz" />
             <CheckItem done={status?.reflectionDone} label="Reflect" />
           </View>
         </Card>
 
-        {isUnlocked() && (
-          <Card style={[styles.unlockCard, { backgroundColor: '#F5FAF3' }]}>
-            <Ionicons name="lock-open-outline" size={24} color={COLORS.success} />
-            <View style={styles.unlockInfo}>
-              <Text style={styles.unlockTitle}>Apps Unlocked</Text>
-              <Text style={styles.unlockTime}>{getUnlockTimeRemaining()} minutes remaining</Text>
-            </View>
-          </Card>
-        )}
-
-        {!status?.versesRead && (
+        {!status?.readingCompleted && (
           <Button
-            title="Start Today's Reading"
+            title="Begin Today's Reading"
             onPress={() => navigation.navigate('Reading')}
             style={styles.ctaButton}
           />
         )}
 
-        {status?.versesRead > 0 && !status?.quizPassed && (
+        {status?.readingCompleted && !status?.quizPassed && (
           <Button
             title="Take the Quiz"
             onPress={() => navigation.navigate('Quiz')}
@@ -149,16 +138,26 @@ const HomeScreen = ({ navigation }) => {
           <Card style={styles.completedCard}>
             <Ionicons name="checkmark-circle" size={32} color={COLORS.success} />
             <Text style={styles.completedText}>
-              Today's journey is complete. Rest well.
+              Amazing work today! You're building wisdom one day at a time.
             </Text>
-            <TouchableOpacity
-              style={styles.rereadButton}
-              onPress={() => navigation.navigate('Reading')}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="book-outline" size={18} color={COLORS.primary} />
-              <Text style={styles.rereadText}>Re-read Today's Verses</Text>
-            </TouchableOpacity>
+            <View style={styles.completedActions}>
+              <TouchableOpacity
+                style={styles.rereadButton}
+                onPress={() => navigation.navigate('Reading')}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="book-outline" size={18} color={COLORS.primary} />
+                <Text style={styles.rereadText}>Re-read Today's Verses</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.bonusButton}
+                onPress={() => navigation.navigate('BonusReading')}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="arrow-forward-outline" size={18} color={COLORS.success} />
+                <Text style={styles.bonusText}>Keep Going</Text>
+              </TouchableOpacity>
+            </View>
           </Card>
         )}
 
@@ -176,7 +175,7 @@ const HomeScreen = ({ navigation }) => {
           <StatCard
             icon="shield-outline"
             value={user?.disciplineLevel || 1}
-            label="Level"
+            label="Wisdom Level"
           />
         </View>
       </ScrollView>
@@ -189,9 +188,9 @@ const HomeScreen = ({ navigation }) => {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Ready to grow?</Text>
+            <Text style={styles.modalTitle}>You're on a roll!</Text>
             <Text style={styles.modalSubtitle}>
-              You have been consistent for a week. Would you like to increase your discipline level?
+              A week of consistency — that's impressive! Ready to take your practice to the next level?
             </Text>
             {disciplineData?.options?.map((option) => (
               <TouchableOpacity
@@ -301,23 +300,6 @@ const styles = StyleSheet.create({
   checkLabelDone: {
     color: COLORS.success,
   },
-  unlockCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.lg,
-  },
-  unlockInfo: {
-    marginLeft: SPACING.md,
-  },
-  unlockTitle: {
-    ...FONTS.title,
-    fontSize: 16,
-    color: COLORS.success,
-  },
-  unlockTime: {
-    ...FONTS.small,
-    color: COLORS.success,
-  },
   ctaButton: {
     marginBottom: SPACING.lg,
   },
@@ -331,10 +313,14 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     textAlign: 'center',
   },
+  completedActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
   rereadButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: SPACING.md,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.md,
@@ -345,6 +331,20 @@ const styles = StyleSheet.create({
   rereadText: {
     ...FONTS.small,
     color: COLORS.primary,
+    fontWeight: '600',
+  },
+  bonusButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.success,
+    gap: SPACING.sm,
+  },
+  bonusText: {
+    ...FONTS.small,
+    color: COLORS.white,
     fontWeight: '600',
   },
   statsRow: {

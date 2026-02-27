@@ -16,6 +16,10 @@ const dailyProgressSchema = new mongoose.Schema({
       ref: 'Verse',
     },
   ],
+  readingCompleted: {
+    type: Boolean,
+    default: false,
+  },
   quizScore: {
     type: Number,
     default: null,
@@ -31,14 +35,6 @@ const dailyProgressSchema = new mongoose.Schema({
   passed: {
     type: Boolean,
     default: false,
-  },
-  unlockExpiresAt: {
-    type: Date,
-    default: null,
-  },
-  blockedAttempts: {
-    type: Number,
-    default: 0,
   },
 }, {
   timestamps: true,

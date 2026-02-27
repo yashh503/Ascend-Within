@@ -77,33 +77,21 @@ const AnalyticsScreen = () => {
             color={COLORS.primary}
           />
           <StatItem
-            icon="lock-closed-outline"
-            value={`${analytics.totalBlockedMinutes}m`}
-            label="Time Blocked"
-            color={COLORS.error}
-          />
-          <StatItem
-            icon="lock-open-outline"
-            value={`${analytics.totalUnlockMinutes}m`}
-            label="Time Unlocked"
+            icon="calendar-outline"
+            value={analytics.completedDays}
+            label="Days Completed"
             color={COLORS.success}
-          />
-          <StatItem
-            icon="hand-left-outline"
-            value={analytics.totalBlockedAttempts}
-            label="Blocked Attempts"
-            color={COLORS.warning}
           />
           <StatItem
             icon="pencil-outline"
             value={analytics.reflectionsDone}
-            label="Reflections"
+            label="Reflections Written"
             color={COLORS.accent}
           />
           <StatItem
             icon="shield-outline"
             value={analytics.disciplineLevel}
-            label="Discipline Level"
+            label="Wisdom Level"
             color={COLORS.primaryDark}
           />
         </View>

@@ -4,35 +4,30 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Dimensions,
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context'; 
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import ProgressBar from '../components/ProgressBar';
-import { verseAPI, progressAPI } from '../services/api';
+import { verseAPI } from '../services/api';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 
-const { width } = Dimensions.get('window');
-
-const ReadingScreen = ({ navigation }) => {
+const BonusReadingScreen = ({ navigation }) => {
   const [verses, setVerses] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [progress, setProgress] = useState(null);
   const scrollRef = useRef(null);
 
   useEffect(() => {
-    loadVerses();
+    loadBonusVerses();
   }, []);
 
-  const loadVerses = async () => {
+  const loadBonusVerses = async () => {
     try {
-      const response = await verseAPI.getDailyVerses();
+      const response = await verseAPI.getBonusVerses();
       setVerses(response.data.verses);
-      setProgress(response.data.progress);
     } catch (error) {
       Alert.alert('Error', error.message);
     } finally {
@@ -42,30 +37,15 @@ const ReadingScreen = ({ navigation }) => {
 
   const goToNext = () => {
     if (currentIndex < verses.length - 1) {
-      const next = currentIndex + 1;
-      setCurrentIndex(next);
+      setCurrentIndex(currentIndex + 1);
       scrollRef.current?.scrollTo({ y: 0, animated: true });
     }
   };
 
   const goToPrev = () => {
     if (currentIndex > 0) {
-      const prev = currentIndex - 1;
-      setCurrentIndex(prev);
+      setCurrentIndex(currentIndex - 1);
       scrollRef.current?.scrollTo({ y: 0, animated: true });
-    }
-  };
-
-  const handleFinishReading = async () => {
-    if (progress?.passed) {
-      navigation.goBack();
-    } else {
-      try {
-        await progressAPI.completeReading();
-        navigation.navigate('Quiz', { verses });
-      } catch (error) {
-        Alert.alert('Error', error.message);
-      }
     }
   };
 
@@ -73,7 +53,7 @@ const ReadingScreen = ({ navigation }) => {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Preparing your reading...</Text>
+        <Text style={styles.loadingText}>Loading more wisdom...</Text>
       </View>
     );
   }
@@ -83,7 +63,12 @@ const ReadingScreen = ({ navigation }) => {
   if (!verse) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>No verses available. Please try again later.</Text>
+        <Text style={styles.loadingText}>No more verses available right now.</Text>
+        <Button
+          title="Go Back"
+          onPress={() => navigation.goBack()}
+          style={{ marginTop: SPACING.lg }}
+        />
       </View>
     );
   }
@@ -91,6 +76,7 @@ const ReadingScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.topBar}>
+        <Text style={styles.bonusBadge}>Bonus Reading</Text>
         <Text style={styles.counter}>
           Verse {currentIndex + 1} of {verses.length}
         </Text>
@@ -161,8 +147,8 @@ const ReadingScreen = ({ navigation }) => {
           />
         ) : (
           <Button
-            title={progress?.passed ? 'Done Reading' : 'Take Quiz'}
-            onPress={handleFinishReading}
+            title="Done"
+            onPress={() => navigation.goBack()}
             style={styles.navButton}
           />
         )}
@@ -181,15 +167,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: COLORS.background,
+    paddingHorizontal: SPACING.lg,
   },
   loadingText: {
     ...FONTS.body,
     color: COLORS.textSecondary,
     marginTop: SPACING.md,
+    textAlign: 'center',
   },
   topBar: {
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
+  },
+  bonusBadge: {
+    ...FONTS.caption,
+    fontWeight: '600',
+    color: COLORS.success,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: SPACING.xs,
   },
   counter: {
     ...FONTS.small,
@@ -260,4 +257,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ReadingScreen;
+export default BonusReadingScreen;

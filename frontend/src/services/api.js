@@ -32,14 +32,15 @@ export const authAPI = {
 
 export const verseAPI = {
   getDailyVerses: () => api.get('/verses/daily'),
+  getBonusVerses: () => api.get('/verses/bonus'),
   completeOnboarding: (data) => api.post('/verses/onboarding', data),
 };
 
 export const progressAPI = {
+  completeReading: () => api.post('/progress/complete-reading'),
   submitQuiz: (data) => api.post('/progress/quiz', data),
   submitReflection: (data) => api.post('/progress/reflection', data),
   getStatus: () => api.get('/progress/status'),
-  recordBlocked: () => api.post('/progress/blocked'),
   getAnalytics: () => api.get('/progress/analytics'),
   resetQuiz: () => api.post('/progress/reset-quiz'),
 };

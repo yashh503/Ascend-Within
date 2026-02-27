@@ -17,7 +17,7 @@ import { COLORS, SPACING, FONTS, RADIUS, SHADOWS } from '../constants/theme';
 const TABS = [
   { key: 'streak', label: 'Streak', icon: 'flame-outline' },
   { key: 'verses', label: 'Verses', icon: 'book-outline' },
-  { key: 'level', label: 'Level', icon: 'shield-outline' },
+  { key: 'level', label: 'Wisdom', icon: 'shield-outline' },
   { key: 'longest_streak', label: 'Best Streak', icon: 'trophy-outline' },
 ];
 

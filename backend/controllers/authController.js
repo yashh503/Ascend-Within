@@ -68,11 +68,11 @@ const login = async (req, res) => {
         email: user.email,
         wisdomPath: user.wisdomPath,
         dailyTarget: user.dailyTarget,
-        restrictedApps: user.restrictedApps,
         onboardingComplete: user.onboardingComplete,
         streakCount: user.streakCount,
         longestStreak: user.longestStreak,
         disciplineLevel: user.disciplineLevel,
+        totalVersesCompleted: user.totalVersesCompleted,
       },
     });
   } catch (error) {
@@ -90,14 +90,11 @@ const getProfile = async (req, res) => {
         email: user.email,
         wisdomPath: user.wisdomPath,
         dailyTarget: user.dailyTarget,
-        restrictedApps: user.restrictedApps,
         onboardingComplete: user.onboardingComplete,
         streakCount: user.streakCount,
         longestStreak: user.longestStreak,
         disciplineLevel: user.disciplineLevel,
         totalVersesCompleted: user.totalVersesCompleted,
-        totalBlockedMinutes: user.totalBlockedMinutes,
-        totalUnlockMinutes: user.totalUnlockMinutes,
       },
     });
   } catch (error) {

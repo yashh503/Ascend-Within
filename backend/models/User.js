@@ -30,10 +30,6 @@ const userSchema = new mongoose.Schema({
     enum: [1, 5, 10],
     default: null,
   },
-  restrictedApps: {
-    type: [String],
-    default: [],
-  },
   onboardingComplete: {
     type: Boolean,
     default: false,
@@ -59,14 +55,6 @@ const userSchema = new mongoose.Schema({
     default: 0,
   },
   totalVersesCompleted: {
-    type: Number,
-    default: 0,
-  },
-  totalBlockedMinutes: {
-    type: Number,
-    default: 0,
-  },
-  totalUnlockMinutes: {
     type: Number,
     default: 0,
   },

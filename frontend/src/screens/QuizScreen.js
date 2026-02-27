@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; 
 import { Ionicons } from '@expo/vector-icons';
-import Card from '../components/Card';
 import Button from '../components/Button';
 import ProgressBar from '../components/ProgressBar';
 import { progressAPI, verseAPI } from '../services/api';
@@ -128,24 +127,15 @@ const QuizScreen = ({ navigation, route }) => {
             />
           </View>
           <Text style={styles.resultTitle}>
-            {result.passed ? 'Well done!' : 'Keep learning'}
+            {result.passed ? 'Brilliant!' : 'Almost there!'}
           </Text>
           <Text style={styles.resultScore}>
             {result.score} / {result.total} correct ({result.percentage}%)
           </Text>
           <Text style={styles.resultMessage}>{result.message}</Text>
 
-          {result.passed && (
-            <Card style={styles.unlockNotice}>
-              <Ionicons name="lock-open-outline" size={24} color={COLORS.success} />
-              <Text style={styles.unlockNoticeText}>
-                Your restricted apps are now unlocked for 20 minutes.
-              </Text>
-            </Card>
-          )}
-
           <Button
-            title={result.passed ? 'Write Reflection' : 'Read Again'}
+            title={result.passed ? 'Write Reflection' : 'Review Verses'}
             onPress={handleContinue}
             style={styles.resultButton}
           />
@@ -353,18 +343,6 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     textAlign: 'center',
     marginBottom: SPACING.xl,
-  },
-  unlockNotice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5FAF3',
-    marginBottom: SPACING.xl,
-  },
-  unlockNoticeText: {
-    ...FONTS.body,
-    color: COLORS.success,
-    marginLeft: SPACING.md,
-    flex: 1,
   },
   resultButton: {
     width: '100%',

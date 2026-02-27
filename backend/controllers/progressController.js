@@ -5,6 +5,28 @@ const getTodayString = () => {
   return new Date().toISOString().split('T')[0];
 };
 
+const completeReading = async (req, res) => {
+  try {
+    const today = getTodayString();
+    const progress = await DailyProgress.findOne({ userId: req.user._id, date: today });
+
+    if (!progress) {
+      return res.status(404).json({ message: 'No daily progress found. Please start today\'s reading first.' });
+    }
+
+    if (progress.readingCompleted) {
+      return res.json({ message: 'Reading already completed', readingCompleted: true });
+    }
+
+    progress.readingCompleted = true;
+    await progress.save();
+
+    res.json({ message: 'Great job finishing today\'s reading!', readingCompleted: true });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 const submitQuiz = async (req, res) => {
   try {
     const { score, total } = req.body;
@@ -22,12 +44,11 @@ const submitQuiz = async (req, res) => {
 
     if (progress.passed) {
       return res.json({
-        message: 'Quiz already passed today',
+        message: 'You\'ve already aced today\'s quiz!',
         progress: {
           quizScore: progress.quizScore,
           quizTotal: progress.quizTotal,
           passed: progress.passed,
-          unlockExpiresAt: progress.unlockExpiresAt,
         },
       });
     }
@@ -40,10 +61,6 @@ const submitQuiz = async (req, res) => {
     progress.passed = passed;
 
     if (passed) {
-      const unlockMinutes = 20;
-      const unlockExpiresAt = new Date(Date.now() + unlockMinutes * 60 * 1000);
-      progress.unlockExpiresAt = unlockExpiresAt;
-
       const user = req.user;
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
@@ -62,7 +79,6 @@ const submitQuiz = async (req, res) => {
       user.lastCompletedDate = new Date();
       user.currentVerseIndex += user.dailyTarget;
       user.totalVersesCompleted += user.dailyTarget;
-      user.totalUnlockMinutes += unlockMinutes;
 
       await user.save();
     }
@@ -74,10 +90,9 @@ const submitQuiz = async (req, res) => {
       score,
       total,
       percentage: Math.round(percentage),
-      unlockExpiresAt: progress.unlockExpiresAt,
       message: passed
-        ? 'Well done! Your apps are unlocked for 20 minutes.'
-        : 'You need at least 70% to pass. Please try again.',
+        ? 'Excellent work! You truly absorbed today\'s wisdom.'
+        : 'Almost there! Review the verses and give it another go.',
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -114,17 +129,13 @@ const getStatus = async (req, res) => {
     const progress = await DailyProgress.findOne({ userId: req.user._id, date: today }).populate('versesAssigned');
     const user = req.user;
 
-    const isUnlocked = progress && progress.unlockExpiresAt && new Date(progress.unlockExpiresAt) > new Date();
-
     res.json({
       today: {
         hasProgress: !!progress,
-        versesRead: progress ? progress.versesAssigned.length : 0,
+        readingCompleted: progress ? progress.readingCompleted : false,
         quizTaken: progress ? progress.quizScore !== null : false,
         quizPassed: progress ? progress.passed : false,
         reflectionDone: progress ? !!progress.reflection : false,
-        isUnlocked,
-        unlockExpiresAt: progress ? progress.unlockExpiresAt : null,
       },
       streak: {
         current: user.streakCount,
@@ -132,38 +143,9 @@ const getStatus = async (req, res) => {
       },
       stats: {
         totalVersesCompleted: user.totalVersesCompleted,
-        totalBlockedMinutes: user.totalBlockedMinutes,
-        totalUnlockMinutes: user.totalUnlockMinutes,
         disciplineLevel: user.disciplineLevel,
       },
     });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-const recordBlockedAttempt = async (req, res) => {
-  try {
-    const today = getTodayString();
-    let progress = await DailyProgress.findOne({ userId: req.user._id, date: today });
-
-    if (!progress) {
-      progress = await DailyProgress.create({
-        userId: req.user._id,
-        date: today,
-        versesAssigned: [],
-        blockedAttempts: 1,
-      });
-    } else {
-      progress.blockedAttempts += 1;
-      await progress.save();
-    }
-
-    const user = req.user;
-    user.totalBlockedMinutes += 1;
-    await user.save();
-
-    res.json({ blockedAttempts: progress.blockedAttempts });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -177,7 +159,6 @@ const getAnalytics = async (req, res) => {
 
     const totalDays = allProgress.length;
     const completedDays = allProgress.filter((p) => p.passed).length;
-    const totalBlockedAttempts = allProgress.reduce((sum, p) => sum + (p.blockedAttempts || 0), 0);
     const reflectionsDone = allProgress.filter((p) => p.reflection).length;
 
     res.json({
@@ -186,12 +167,9 @@ const getAnalytics = async (req, res) => {
         longest: user.longestStreak,
       },
       totalVersesCompleted: user.totalVersesCompleted,
-      totalBlockedMinutes: user.totalBlockedMinutes,
-      totalUnlockMinutes: user.totalUnlockMinutes,
       totalDays,
       completedDays,
       completionRate: totalDays > 0 ? Math.round((completedDays / totalDays) * 100) : 0,
-      totalBlockedAttempts,
       reflectionsDone,
       disciplineLevel: user.disciplineLevel,
     });
@@ -217,10 +195,10 @@ const resetQuiz = async (req, res) => {
     progress.quizTotal = null;
     await progress.save();
 
-    res.json({ message: 'Quiz reset. Please re-read the verses and try again.' });
+    res.json({ message: 'Quiz reset. Take another look at the verses and try again.' });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-module.exports = { submitQuiz, submitReflection, getStatus, recordBlockedAttempt, getAnalytics, resetQuiz };
+module.exports = { completeReading, submitQuiz, submitReflection, getStatus, getAnalytics, resetQuiz };

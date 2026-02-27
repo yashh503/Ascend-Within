@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  Platform,
-  Modal,
-  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,117 +14,36 @@ import Card from '../components/Card';
 import ProgressBar from '../components/ProgressBar';
 import { useAuth } from '../context/AuthContext';
 import PermissionsManager from '../utils/permissionsManager';
-import BlockingService from '../utils/blockingSimulator';
 import { COLORS, SPACING, FONTS, RADIUS, SHADOWS } from '../constants/theme';
 
-const STEPS = ['Wisdom Path', 'Daily Target', 'Restrict Apps', 'Permissions'];
-
-const SIMULATED_APPS = [
-  { name: 'Instagram', package: 'com.instagram.android' },
-  { name: 'Twitter / X', package: 'com.twitter.android' },
-  { name: 'TikTok', package: 'com.zhiliaoapp.musically' },
-  { name: 'YouTube', package: 'com.google.android.youtube' },
-  { name: 'Facebook', package: 'com.facebook.katana' },
-  { name: 'Snapchat', package: 'com.snapchat.android' },
-  { name: 'Reddit', package: 'com.reddit.frontpage' },
-  { name: 'Netflix', package: 'com.netflix.mediaclient' },
-  { name: 'WhatsApp', package: 'com.whatsapp' },
-  { name: 'Telegram', package: 'org.telegram.messenger' },
-];
+const STEPS = ['Wisdom Path', 'Daily Target', 'Notifications'];
 
 const OnboardingScreen = () => {
   const { completeOnboarding } = useAuth();
   const [step, setStep] = useState(0);
   const [wisdomPath, setWisdomPath] = useState(null);
   const [dailyTarget, setDailyTarget] = useState(null);
-  const [selectedApps, setSelectedApps] = useState([]);
-  const [permissionsGranted, setPermissionsGranted] = useState({});
+  const [notificationGranted, setNotificationGranted] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [permissionsList, setPermissionsList] = useState([]);
-  const [showGuide, setShowGuide] = useState(false);
-  const [guideStep, setGuideStep] = useState(0);
-
-  const appStateRef = useRef(AppState.currentState);
 
   useEffect(() => {
     const init = async () => {
-      const info = PermissionsManager.getPermissionInfo();
-      setPermissionsList(info);
-      const status = await PermissionsManager.getPermissionStatus();
-      setPermissionsGranted(status);
+      const granted = await PermissionsManager.checkNotificationStatus();
+      setNotificationGranted(granted);
     };
     init();
   }, []);
 
-  // Re-check permissions when user returns from system settings
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', async (nextState) => {
-      if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
-        // User returned from settings — re-verify all permissions from OS
-        if (step === 3) {
-          const freshStatus = await PermissionsManager.getPermissionStatus();
-          setPermissionsGranted(freshStatus);
-        }
-      }
-      appStateRef.current = nextState;
-    });
-    return () => subscription.remove();
-  }, [step]);
-
-  const toggleApp = (packageName) => {
-    setSelectedApps((prev) =>
-      prev.includes(packageName)
-        ? prev.filter((p) => p !== packageName)
-        : [...prev, packageName]
-    );
-  };
-
-  const handlePermissionRequest = async (perm) => {
-    if (perm.hasGuide) {
-      setGuideStep(0);
-      setShowGuide(true);
-      return;
-    }
-
-    if (perm.opensSettings) {
-      // Opens system settings (Usage Stats / Overlay) — permission is
-      // re-verified automatically when user returns via AppState listener
-      await PermissionsManager.requestPermission(perm.key);
-      return;
-    }
-
-    // Notifications — shows real system dialog
-    await PermissionsManager.requestPermission(perm.key);
-    const freshStatus = await PermissionsManager.getPermissionStatus();
-    setPermissionsGranted(freshStatus);
-  };
-
-  const handleGuideComplete = async () => {
-    await PermissionsManager.markGranted('screenTime');
-    setPermissionsGranted((prev) => ({ ...prev, screenTime: true }));
-    setShowGuide(false);
-  };
-
-  const handleOpenSettingsFromGuide = async () => {
-    await PermissionsManager.openScreenTimeSettings();
+  const handleRequestNotifications = async () => {
+    const granted = await PermissionsManager.requestNotifications();
+    setNotificationGranted(granted);
   };
 
   const canProceed = () => {
     switch (step) {
       case 0: return !!wisdomPath;
       case 1: return !!dailyTarget;
-      case 2: return selectedApps.length > 0;
-      case 3: {
-        if (Platform.OS === 'ios') {
-          return permissionsGranted.notifications && permissionsGranted.screenTime;
-        }
-        // Android with native module: need all 3 real permissions
-        if (BlockingService.isNativeBlockingAvailable()) {
-          return permissionsGranted.notifications && permissionsGranted.usageStats && permissionsGranted.overlay;
-        }
-        // Expo Go fallback: just notifications
-        return !!permissionsGranted.notifications;
-      }
+      case 2: return true;
       default: return false;
     }
   };
@@ -138,7 +54,7 @@ const OnboardingScreen = () => {
     } else {
       setLoading(true);
       try {
-        await completeOnboarding(wisdomPath, dailyTarget, selectedApps);
+        await completeOnboarding(wisdomPath, dailyTarget);
       } catch (error) {
         Alert.alert('Error', error.message);
       } finally {
@@ -146,8 +62,6 @@ const OnboardingScreen = () => {
       }
     }
   };
-
-  const guideSteps = PermissionsManager.getScreenTimeGuide();
 
   const renderStep = () => {
     switch (step) {
@@ -214,104 +128,36 @@ const OnboardingScreen = () => {
       case 2:
         return (
           <View>
-            <Text style={styles.stepTitle}>Select apps to restrict</Text>
+            <Text style={styles.stepTitle}>Enable notifications</Text>
             <Text style={styles.stepDescription}>
-              Choose the apps you want to lock until you complete your daily wisdom task.
-            </Text>
-            <ScrollView style={styles.appList} showsVerticalScrollIndicator={false}>
-              {SIMULATED_APPS.map((app) => {
-                const isSelected = selectedApps.includes(app.package);
-                return (
-                  <TouchableOpacity
-                    key={app.package}
-                    style={[styles.appItem, isSelected && styles.appItemSelected]}
-                    onPress={() => toggleApp(app.package)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.appName}>{app.name}</Text>
-                    <Ionicons
-                      name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={24}
-                      color={isSelected ? COLORS.primary : COLORS.textLight}
-                    />
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-            <Text style={styles.selectedCount}>
-              {selectedApps.length} app{selectedApps.length !== 1 ? 's' : ''} selected
-            </Text>
-          </View>
-        );
-
-      case 3:
-        return (
-          <View>
-            <Text style={styles.stepTitle}>
-              {Platform.OS === 'ios' ? 'Setup app blocking' : 'Grant permissions'}
-            </Text>
-            <Text style={styles.stepDescription}>
-              {Platform.OS === 'ios'
-                ? 'We need notification access for daily reminders, and we\'ll guide you through setting up Screen Time to block apps natively.'
-                : BlockingService.isNativeBlockingAvailable()
-                  ? 'These permissions let Ascend Within detect when you open a restricted app and bring you back to complete your daily task.'
-                  : 'Allow notifications for daily reminders to complete your wisdom task.'}
+              Get a gentle daily reminder to complete your wisdom reading and reflection.
             </Text>
 
-            {/* All permission items — dynamically from PermissionsManager */}
-            {permissionsList.map((perm) => {
-              const isGranted = permissionsGranted[perm.key];
-              return (
-                <TouchableOpacity
-                  key={perm.key}
-                  style={[styles.permItem, isGranted && styles.permItemGranted]}
-                  onPress={() => !isGranted && handlePermissionRequest(perm)}
-                  activeOpacity={isGranted ? 1 : 0.7}
-                  disabled={isGranted}
-                >
-                  <View style={[styles.permIconWrap, isGranted && styles.permIconWrapGranted]}>
-                    <Ionicons
-                      name={isGranted ? 'checkmark' : perm.icon}
-                      size={24}
-                      color={isGranted ? COLORS.white : COLORS.primary}
-                    />
-                  </View>
-                  <View style={styles.permInfo}>
-                    <Text style={styles.permTitle}>{perm.title}</Text>
-                    <Text style={styles.permDesc}>{perm.description}</Text>
-                  </View>
-                  {isGranted ? (
-                    <Text style={styles.permGrantedLabel}>Granted</Text>
-                  ) : (
-                    <View style={styles.permAction}>
-                      <Text style={styles.permActionText}>{perm.actionLabel}</Text>
-                      {perm.opensSettings && (
-                        <Ionicons name="open-outline" size={14} color={COLORS.primary} />
-                      )}
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-
-            {/* Android note: settings-based permissions re-check automatically */}
-            {Platform.OS === 'android' && BlockingService.isNativeBlockingAvailable() && (
-              <Card style={styles.note}>
-                <Ionicons name="information-circle-outline" size={18} color={COLORS.textSecondary} />
-                <Text style={styles.noteText}>
-                  Usage Access and Display Over Apps open your device settings. Enable them for Ascend Within, then come back — we'll detect it automatically.
-                </Text>
-              </Card>
-            )}
-
-            {Platform.OS === 'ios' && !permissionsGranted.screenTime && (
-              <Card style={styles.note}>
-                <Ionicons name="information-circle-outline" size={18} color={COLORS.textSecondary} />
-                <Text style={styles.noteText}>
-                  Tap "Setup Guide" above for a step-by-step walkthrough of iOS Screen Time configuration.
-                </Text>
-              </Card>
-            )}
+            <TouchableOpacity
+              style={[styles.permItem, notificationGranted && styles.permItemGranted]}
+              onPress={() => !notificationGranted && handleRequestNotifications()}
+              activeOpacity={notificationGranted ? 1 : 0.7}
+              disabled={notificationGranted}
+            >
+              <View style={[styles.permIconWrap, notificationGranted && styles.permIconWrapGranted]}>
+                <Ionicons
+                  name={notificationGranted ? 'checkmark' : 'notifications-outline'}
+                  size={24}
+                  color={notificationGranted ? COLORS.white : COLORS.primary}
+                />
+              </View>
+              <View style={styles.permInfo}>
+                <Text style={styles.permTitle}>Daily Reminders</Text>
+                <Text style={styles.permDesc}>Get notified every morning to complete your wisdom task</Text>
+              </View>
+              {notificationGranted ? (
+                <Text style={styles.permGrantedLabel}>Granted</Text>
+              ) : (
+                <View style={styles.permAction}>
+                  <Text style={styles.permActionText}>Allow</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
         );
     }
@@ -349,80 +195,6 @@ const OnboardingScreen = () => {
           loading={loading}
         />
       </View>
-
-      {/* iOS Screen Time Setup Guide Modal */}
-      <Modal
-        visible={showGuide}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowGuide(false)}
-      >
-        <SafeAreaView style={styles.guideContainer}>
-          <View style={styles.guideHeader}>
-            <Text style={styles.guideTitle}>Screen Time Setup</Text>
-            <TouchableOpacity onPress={() => setShowGuide(false)} style={styles.guideClose}>
-              <Ionicons name="close" size={24} color={COLORS.text} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.guideProgress}>
-            <Text style={styles.guideStepCount}>
-              Step {guideStep + 1} of {guideSteps.length}
-            </Text>
-            <ProgressBar progress={((guideStep + 1) / guideSteps.length) * 100} />
-          </View>
-
-          <View style={styles.guideBody}>
-            <View style={styles.guideIconCircle}>
-              <Ionicons
-                name={guideSteps[guideStep].icon}
-                size={40}
-                color={COLORS.primary}
-              />
-            </View>
-            <Text style={styles.guideStepTitle}>{guideSteps[guideStep].title}</Text>
-            <Text style={styles.guideStepDesc}>{guideSteps[guideStep].description}</Text>
-          </View>
-
-          <View style={styles.guideFooter}>
-            {guideStep === 0 && (
-              <Button
-                title="Open Settings Now"
-                variant="outline"
-                onPress={handleOpenSettingsFromGuide}
-                style={styles.guideBtn}
-              />
-            )}
-
-            <View style={styles.guideNavRow}>
-              {guideStep > 0 ? (
-                <Button
-                  title="Previous"
-                  variant="outline"
-                  onPress={() => setGuideStep(guideStep - 1)}
-                  style={styles.guideNavBtn}
-                />
-              ) : (
-                <View style={styles.guideNavBtn} />
-              )}
-
-              {guideStep < guideSteps.length - 1 ? (
-                <Button
-                  title="Next"
-                  onPress={() => setGuideStep(guideStep + 1)}
-                  style={styles.guideNavBtn}
-                />
-              ) : (
-                <Button
-                  title="I've Done This"
-                  onPress={handleGuideComplete}
-                  style={styles.guideNavBtn}
-                />
-              )}
-            </View>
-          </View>
-        </SafeAreaView>
-      </Modal>
     </SafeAreaView>
   );
 };
@@ -533,34 +305,6 @@ const styles = StyleSheet.create({
   targetDesc: {
     ...FONTS.small,
   },
-  appList: {
-    maxHeight: 360,
-  },
-  appItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-  },
-  appItemSelected: {
-    borderColor: COLORS.primary,
-    backgroundColor: '#FAF8F5',
-  },
-  appName: {
-    ...FONTS.body,
-    fontWeight: '500',
-  },
-  selectedCount: {
-    ...FONTS.small,
-    textAlign: 'center',
-    marginTop: SPACING.md,
-    fontWeight: '500',
-  },
   permItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -614,90 +358,6 @@ const styles = StyleSheet.create({
     ...FONTS.small,
     color: COLORS.success,
     fontWeight: '600',
-  },
-  note: {
-    marginTop: SPACING.sm,
-    backgroundColor: COLORS.surfaceAlt,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: SPACING.sm,
-  },
-  noteText: {
-    ...FONTS.small,
-    flex: 1,
-    lineHeight: 20,
-  },
-  // ─── Screen Time Guide Modal ─────────────────────
-  guideContainer: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  guideHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  guideTitle: {
-    ...FONTS.title,
-  },
-  guideClose: {
-    padding: SPACING.xs,
-  },
-  guideProgress: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-  },
-  guideStepCount: {
-    ...FONTS.small,
-    fontWeight: '500',
-    marginBottom: SPACING.sm,
-    textAlign: 'center',
-  },
-  guideBody: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.xl,
-  },
-  guideIconCircle: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: COLORS.surfaceAlt,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.xl,
-    borderWidth: 2,
-    borderColor: COLORS.border,
-  },
-  guideStepTitle: {
-    ...FONTS.subheading,
-    textAlign: 'center',
-    marginBottom: SPACING.md,
-  },
-  guideStepDesc: {
-    ...FONTS.body,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    lineHeight: 26,
-  },
-  guideFooter: {
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.lg,
-  },
-  guideBtn: {
-    marginBottom: SPACING.md,
-  },
-  guideNavRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-  },
-  guideNavBtn: {
-    flex: 1,
   },
 });
 
